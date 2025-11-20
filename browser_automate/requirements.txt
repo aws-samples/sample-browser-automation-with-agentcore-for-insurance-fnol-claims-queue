@@ -3,3 +3,6 @@ boto3
 requests
 fire
 pydantic
+bedrock-agentcore
+playwright
+rich

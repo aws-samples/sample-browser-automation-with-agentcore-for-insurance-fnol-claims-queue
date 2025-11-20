@@ -113,7 +113,6 @@ class ComplexityAnalyzer:
 
     def _call_agent_sync(self, prompt: str) -> str:
         """Call the agent synchronously and return text content."""
-        # Strands Agent is callable; some versions also expose .run()
         try:
             result = self.agent(prompt)
         except TypeError:
