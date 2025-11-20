@@ -9,7 +9,7 @@ from nova_act import NovaAct
 from rich.console import Console
 
 console = Console()
-NOVA_ACT_API_KEY = '97e6365f-ca2d-44bd-9494-07b1361ee4c9'
+NOVA_ACT_API_KEY = 'ABCDKEY'
 
 # def automate_claims_with_agentcore(base_url="https://YOUR-NGROK-URL.ngrok.io"):
 def automate_claims_with_agentcore(base_url="https://fa7602298706.ngrok-free.app"):

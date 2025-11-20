@@ -19,7 +19,7 @@ import glob
 from datetime import datetime
 
 console = Console()
-NOVA_ACT_API_KEY = '97e6365f-ca2d-44bd-9494-07b1361ee4c9'
+NOVA_ACT_API_KEY = 'ABCDKEY'
 
 def organize_screenshots(session_logs_dir):
     """Organize screenshots chronologically and open in browser"""

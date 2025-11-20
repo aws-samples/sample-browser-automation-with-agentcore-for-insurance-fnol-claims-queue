@@ -66,7 +66,7 @@ python automate_backend_api.py
 - `automate_claims_with_viewer.py` - Enhanced with live view
 
 ### Configuration
-- **Nova Act API Key**: `97e6365f-ca2d-44bd-9494-07b1361ee4c9`
+- **Nova Act API Key**: `ABCDKEY`
 - **AWS Region**: `us-west-2`
 
 ## 🎯 Quick Test Commands

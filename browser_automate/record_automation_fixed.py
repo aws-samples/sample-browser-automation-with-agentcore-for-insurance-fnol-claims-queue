@@ -10,7 +10,7 @@ import json
 import time
 
 console = Console()
-NOVA_ACT_API_KEY = '97e6365f-ca2d-44bd-9494-07b1361ee4c9'
+NOVA_ACT_API_KEY = 'ABCDKEY'
 
 def live_recording_mode_fixed():
     """Live recording mode with proper step management"""

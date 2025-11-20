@@ -13,7 +13,7 @@ pip install -r requirements.txt
 
 # Set AWS region and Nova Act API key
 export AWS_DEFAULT_REGION=us-west-2
-export NOVA_ACT_API_KEY='97e6365f-ca2d-44bd-9494-07b1361ee4c9'
+export NOVA_ACT_API_KEY='ABCDKEY'
 
 # Test AgentCore and Nova Act installation
 python -c "from bedrock_agentcore.tools.browser_client import browser_session; print('AgentCore Browser Tool OK')"

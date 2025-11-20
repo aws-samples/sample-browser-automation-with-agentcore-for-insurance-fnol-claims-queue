@@ -6,7 +6,7 @@ I have a **Claims Automation System** using AgentCore Browser Tool and Nova Act 
 - **Frontend**: React claims management interface (port 3000)
 - **Backend**: FastAPI server with ML complexity analysis (port 8000)  
 - **Automation**: Nova Act browser automation with multiple script options
-- **Nova Act API Key**: `97e6365f-ca2d-44bd-9494-07b1361ee4c9`
+- **Nova Act API Key**: `ABCDKEY`
 
 ## 🏗️ **System Architecture**
 ```
@@ -63,7 +63,7 @@ python record_automation_fixed.py         # Live recording mode
 5. **automate_claims_extended.py** - Uses higher step limits (100+ steps)
 
 ## 🔧 **Key Configuration**
-- **Nova Act API Key**: `97e6365f-ca2d-44bd-9494-07b1361ee4c9`
+- **Nova Act API Key**: `ABCDKEY`
 - **AWS Region**: `us-west-2`
 - **Backend URL**: http://localhost:8000
 - **Frontend URL**: http://localhost:3000
