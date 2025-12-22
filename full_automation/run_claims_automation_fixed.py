@@ -14,7 +14,7 @@ from nova_act.types.act_errors import ActInvalidModelGenerationError
 
 
 console = Console()
-NOVA_ACT_API_KEY = os.getenv("NOVA_ACT_API_KEY") or "97e6365f-ca2d-44bd-9494-07b1361ee4c9"
+NOVA_ACT_API_KEY = os.getenv("NOVA_ACT_API_KEY") or "abcd-efgh-ijkl-1234-5678"
 
 def text(resp):
     if hasattr(resp, "response") and resp.response:
