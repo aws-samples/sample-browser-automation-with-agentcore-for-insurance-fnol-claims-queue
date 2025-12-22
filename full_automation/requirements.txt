@@ -1,0 +1,5 @@
+rich==13.7.0
+requests==2.31.0
+boto3>=1.41.5
+botocore>=1.41.5
+nova-act>=3.0.0

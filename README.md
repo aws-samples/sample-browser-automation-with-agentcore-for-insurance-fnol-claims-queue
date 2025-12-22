@@ -1,112 +1,199 @@
-# Claims Automation System with AgentCore
+# Claims Processing Cloud Deployment
 
-A comprehensive insurance claims automation system using AgentCore Browser Tool and Nova Act for intelligent browser automation.
+A cloud-native insurance claims processing system using AWS services with DynamoDB for persistent data storage.
 
 ## 🏗️ Architecture
 
-- **Frontend**: React application for claims management interface
-- **Backend**: FastAPI server with complexity analysis
-- **Automation**: Nova Act browser automation with AgentCore integration
-- **Analysis**: ML-powered complexity scoring for claims triage
+- **Frontend**: React application served via CloudFront
+- **Backend**: FastAPI on ECS Fargate with DynamoDB integration
+- **Database**: DynamoDB for claims data persistence
+- **AI/ML**: Amazon Bedrock with Strands agents for complexity analysis
+- **Security**: WAF protection and CloudFront-only ALB access
 
-## 🚀 Setup (One-time)
+## 📋 Prerequisites
 
+- AWS CLI configured with appropriate permissions
+- Node.js and npm
+- Python 3.12
+- Docker (for local testing)
+- CDK CLI: `npm install -g aws-cdk`
+
+## 🚀 Quick Deployment
+
+### Option 1: Automated Deployment
 ```bash
-# Clone and setup everything
-cd /Users/rishikamra/dev/browser_new
-chmod +x setup.sh
-./setup.sh
+# Clone and deploy everything
+git clone <your-repo>
+cd browser_new/cloud_deployment
+./deploy.sh
 ```
 
-## 🧪 Testing Steps (Proper Order)
-
-### Step 1: Start Backend API
+### Option 2: Manual Deployment
 ```bash
-# Terminal 1
-cd /Users/rishikamra/dev/browser_new
-source venv/bin/activate
-python main.py
+# 1. Deploy infrastructure
+cd cdk
+npm install
+npx cdk deploy
+
+# 2. Seed DynamoDB data
+cd ../backend
+export AWS_DEFAULT_REGION=us-west-2
+export CLAIMS_TABLE_NAME=Claims
+python3 seed_data.py
 ```
-**Expected**: Server running on http://localhost:8000
 
-### Step 2: Start Frontend
+## 🗄️ Database Schema
+
+### DynamoDB Table: Claims
+```json
+{
+  "claim_id": "CLM-001",           // Primary Key
+  "type": "Property",
+  "subtype": "Wind/Hail Damage",
+  "date_of_loss": "2024-01-15",
+  "description": "Roof damage from hailstorm",
+  "status": "New",
+  "policy_holder": "John Smith",
+  "policy_number": "POL-12345",
+  "evidence": {
+    "images": 5,
+    "videos": 2,
+    "voice_recordings": 1
+  },
+  "estimated_damage": 15000,
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-15T10:00:00Z"
+}
+```
+
+## 🔧 API Endpoints
+
+- `GET /api/claims` - Get all active claims from DynamoDB
+- `GET /api/claims/{claim_id}` - Get specific claim
+- `POST /api/analyze-claim` - Analyze claim complexity and update status
+
+## 🧪 Testing
+
+### Local Testing with DynamoDB
 ```bash
-# Terminal 2
-cd /Users/rishikamra/dev/browser_new/frontend
+# Start DynamoDB Local (optional)
+docker run -p 8000:8000 amazon/dynamodb-local
+
+# Set environment variables
+export AWS_DEFAULT_REGION=us-west-2
+export CLAIMS_TABLE_NAME=Claims
+
+# Run backend
+cd backend
+python3 main.py
+```
+
+### Frontend Testing
+```bash
+cd frontend
+npm install
 npm start
 ```
-**Expected**: Frontend running on http://localhost:3000
 
-### Step 3: Test Browser Automation
+## 🔐 Security & Permissions
+
+### ECS Task Role Permissions
+- `dynamodb:GetItem`
+- `dynamodb:PutItem` 
+- `dynamodb:UpdateItem`
+- `dynamodb:Scan`
+- `dynamodb:Query`
+- `bedrock:InvokeModel`
+- `bedrock:InvokeModelWithResponseStream`
+
+### Network Security
+- ALB accepts traffic only from CloudFront prefix list
+- ECS tasks in public subnets with security groups
+- WAF protection on CloudFront distribution
+
+## 📊 Data Management
+
+### Seeding Data
 ```bash
-# Terminal 3
-cd /Users/rishikamra/dev/browser_new/browser_automate
-source automation_venv/bin/activate
-python automate_claims_simple.py
+# Seed initial claims data
+cd backend
+python3 seed_data.py
+
+# Force overwrite existing data
+python3 seed_data.py --force
 ```
 
-### Step 4: Test Backend API Only (Alternative)
-```bash
-# If frontend issues, test backend directly
-cd /Users/rishikamra/dev/browser_new/browser_automate
-source automation_venv/bin/activate
-python automate_backend_api.py
-```
-
-## 🔧 Components
-
-### Backend API Endpoints
-- `GET /api/claims` - Claims data
-- `POST /analyze-complexity` - ML complexity analysis
-- `GET /` - Frontend static files
-
-### Browser Automation Scripts
-- `automate_claims_simple.py` - Basic Nova Act automation
-- `automate_backend_api.py` - API-only testing (no frontend needed)
-- `automate_claims_with_viewer.py` - Enhanced with live view
-
-### Configuration
-- **Nova Act API Key**: `ABCDKEY`
-- **AWS Region**: `us-west-2`
-
-## 🎯 Quick Test Commands
-
-```bash
-# Test backend API
-curl http://localhost:8000/api/claims
-
-# Test complexity analyzer
-curl -X POST http://localhost:8000/analyze-complexity \
-  -H "Content-Type: application/json" \
-  -d '{"claim_amount": 15000, "description": "Vehicle collision", "injury_severity": "moderate"}'
-
-# Test frontend
-open http://localhost:3000
-```
+### Backup & Recovery
+DynamoDB provides:
+- Point-in-time recovery
+- On-demand backups
+- Cross-region replication (if configured)
 
 ## 🐛 Troubleshooting
 
-### Frontend Proxy Errors
-- **Issue**: `Proxy error: Could not proxy request`
-- **Fix**: Start backend first, then frontend
+### Common Issues
 
-### Nova Act Connection Refused
-- **Issue**: `Connection refused by https://localhost:3000`
-- **Fix**: Ensure frontend is running on http://localhost:3000
+**DynamoDB Access Denied**
+- Verify ECS task role has DynamoDB permissions
+- Check table name environment variable: `CLAIMS_TABLE_NAME`
 
-### Module Not Found
-- **Issue**: `ModuleNotFoundError: No module named 'bedrock_agentcore'`
-- **Fix**: Use `automate_backend_api.py` for testing without AgentCore
+**Claims Not Loading**
+- Verify DynamoDB table exists and has data
+- Check CloudWatch logs for ECS service errors
 
-## 📊 Expected Results
+**Bedrock Analysis Fails**
+- Ensure region is set to `us-west-2`
+- Verify Bedrock model access permissions
 
-1. **Backend**: JSON API responses with claims data
-2. **Frontend**: React interface showing claims queue
-3. **Automation**: Console output showing claim processing steps
-4. **Complexity Analysis**: ML scores and recommendations
+### Logs & Monitoring
+```bash
+# View ECS service logs
+aws logs tail /ecs/claims-app --follow
 
-## 🔒 Security
+# Check DynamoDB metrics
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/DynamoDB \
+  --metric-name ConsumedReadCapacityUnits \
+  --dimensions Name=TableName,Value=Claims
+```
 
-- Isolated browser automation sessions
-- API key management via environment variables
-- CORS enabled for frontend integration
+## 💰 Cost Optimization
+
+- **DynamoDB**: Pay-per-request billing mode
+- **ECS**: Single Fargate task (scale as needed)
+- **CloudFront**: Free tier covers most development usage
+- **Bedrock**: Pay-per-API-call pricing
+
+## 🔄 CI/CD Integration
+
+### GitHub Actions Example
+```yaml
+- name: Deploy Claims Processing
+  run: |
+    cd cloud_deployment
+    ./deploy.sh
+  env:
+    AWS_DEFAULT_REGION: us-west-2
+```
+
+## 📈 Scaling Considerations
+
+- **DynamoDB**: Auto-scales with pay-per-request
+- **ECS**: Configure auto-scaling based on CPU/memory
+- **CloudFront**: Global edge locations handle traffic spikes
+- **Bedrock**: Managed service with built-in scaling
+
+---
+
+### Development vs Production
+
+**Development**:
+- Single ECS task
+- DynamoDB with removal policy DESTROY
+- Basic monitoring
+
+**Production**:
+- Multi-AZ ECS deployment
+- DynamoDB with backup enabled
+- Enhanced monitoring and alerting
+- Custom domain with SSL certificate

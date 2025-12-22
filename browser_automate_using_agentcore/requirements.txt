@@ -1,6 +1,0 @@
-bedrock-agentcore>=1.0.6
-nova-act
-rich
-requests
-boto3
-botocore

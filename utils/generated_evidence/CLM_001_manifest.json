@@ -1,0 +1,32 @@
+{
+  "claim_details": {
+    "topic": "Pipe burst in basement water damage call by Charlie Wilson with Policy number POL-33333 Claim number CLM-005",
+    "policyholder_name": "John Smith",
+    "policy_number": "POL-12345",
+    "claim_number": "CLM-001",
+    "gender": "male"
+  },
+  "generated_at": "2025-12-03T08:09:39.515764",
+  "evidence": {
+    "images": [
+      "generated_evidence/CLM_001_image_1.png",
+      "generated_evidence/CLM_001_image_2.png",
+      "generated_evidence/CLM_001_image_3.png",
+      "generated_evidence/CLM_001_image_4.png",
+      "generated_evidence/CLM_001_image_5.png",
+      "generated_evidence/CLM_001_image_6.png"
+    ],
+    "videos": [
+      "generated_evidence/CLM_001_video_1.mp4",
+      "generated_evidence/CLM_001_video_2.mp4"
+    ],
+    "call_transcripts": [
+      "generated_evidence/CLM_001_transcript_1.txt"
+    ]
+  },
+  "summary": {
+    "total_images": 6,
+    "total_videos": 2,
+    "total_transcripts": 1
+  }
+}

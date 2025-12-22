@@ -1,0 +1,5 @@
+boto3
+aws-sdk-bedrock-runtime
+Pillow
+requests
+websockets

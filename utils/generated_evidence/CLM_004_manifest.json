@@ -1,0 +1,28 @@
+{
+  "claim_details": {
+    "topic": "vehicle theft",
+    "policyholder_name": "Alice Brown",
+    "policy_number": "POL-22222",
+    "claim_number": "CLM-004",
+    "gender": "female"
+  },
+  "generated_at": "2025-12-03T07:32:20.651135",
+  "evidence": {
+    "images": [
+      "generated_evidence/CLM_004_image_1.png",
+      "generated_evidence/CLM_004_image_2.png",
+      "generated_evidence/CLM_004_image_3.png"
+    ],
+    "videos": [
+      "generated_evidence/CLM_004_video_1.mp4"
+    ],
+    "call_transcripts": [
+      "generated_evidence/CLM_004_transcript_1.txt"
+    ]
+  },
+  "summary": {
+    "total_images": 3,
+    "total_videos": 1,
+    "total_transcripts": 1
+  }
+}

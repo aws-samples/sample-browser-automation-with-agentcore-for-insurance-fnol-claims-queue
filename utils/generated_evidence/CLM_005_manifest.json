@@ -1,0 +1,32 @@
+{
+  "claim_details": {
+    "topic": "pipe burst water damage",
+    "policyholder_name": "Charlie Wilson",
+    "policy_number": "POL-33333",
+    "claim_number": "CLM-005",
+    "gender": "male"
+  },
+  "generated_at": "2025-12-07T00:33:45.920938",
+  "evidence": {
+    "images": [
+      "generated_evidence/CLM_005_image_1.png",
+      "generated_evidence/CLM_005_image_2.png",
+      "generated_evidence/CLM_005_image_3.png",
+      "generated_evidence/CLM_005_image_4.png",
+      "generated_evidence/CLM_005_image_5.png",
+      "generated_evidence/CLM_005_image_6.png"
+    ],
+    "videos": [
+      "generated_evidence/CLM_005_video_1.mp4",
+      "generated_evidence/CLM_005_video_2.mp4"
+    ],
+    "call_transcripts": [
+      "generated_evidence/CLM_005_transcript_1.txt"
+    ]
+  },
+  "summary": {
+    "total_images": 6,
+    "total_videos": 2,
+    "total_transcripts": 1
+  }
+}
