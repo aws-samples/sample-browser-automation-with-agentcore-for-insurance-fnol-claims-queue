@@ -34,26 +34,41 @@ pip install -r requirements.txt
 
 ### Generate All Evidence Types
 ```bash
+# Basic usage with default counts (3 images, 2 videos, 1 transcript)
 python generate_claim_evidence.py "kitchen fire damage" all
+
+# With custom counts
+python generate_claim_evidence.py "Wind hail damage roof damage from hailstorm call by John Smith with Policy number POL-12345 Claim number CLM-001" all --images 5 --videos 2 --transcripts 1
 ```
 
 ### Generate Specific Evidence Types
 ```bash
 # Images only
-python generate_claim_evidence.py "kitchen fire damage" image
+python generate_claim_evidence.py "kitchen fire damage" image --images 5
 
 # Videos only  
-python generate_claim_evidence.py "kitchen fire damage" video
+python generate_claim_evidence.py "kitchen fire damage" video --videos 1
 
 # Audio/transcripts only
-python generate_claim_evidence.py "kitchen fire damage" audio
+python generate_claim_evidence.py "kitchen fire damage" audio --transcripts 3
 ```
 
-### Custom Counts
+### Real Examples
 ```bash
-python generate_claim_evidence.py "kitchen fire damage" image --images 5
-python generate_claim_evidence.py "kitchen fire damage" video --videos 1
-python generate_claim_evidence.py "kitchen fire damage" audio --transcripts 3
+# Property damage claim
+python3 generate_claim_evidence.py "Wind hail damage roof damage from hailstorm call by John Smith with Policy number POL-12345 Claim number CLM-001" all --images 5 --videos 2 --transcripts 1
+
+# Vehicle collision
+python generate_claim_evidence.py "rear-end collision for Vehicle called in by Jane Doe for policy POL-67890 Claim number CLM-002" all --images 8 --videos 1 --transcripts 0
+
+# Kitchen fire
+python3 generate_claim_evidence.py "Kitchen fire caused by electrical fault call by Bob Johnson with Policy number POL-11111 Claim number CLM-003" all --images 12 --videos 3 --transcripts 2
+
+# Vehicle theft
+python3 generate_claim_evidence.py "Vehicle stolen from parking lot call by Alice Brown with Policy number POL-22222 Claim number CLM-004" all --images 3 --videos 1 --transcripts 1
+
+# Water damage
+python3 generate_claim_evidence.py "Pipe burst in basement water damage call by Charlie Wilson with Policy number POL-33333 Claim number CLM-005" all --images 6 --videos 2 --transcripts 0
 ```
 
 ## Output Structure
