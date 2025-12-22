@@ -1,0 +1,33 @@
+{
+  "claim_details": {
+    "topic": "rear-end collision",
+    "policyholder_name": "Jane Doe",
+    "policy_number": "POL-67890",
+    "claim_number": "CLM-002",
+    "gender": "female"
+  },
+  "generated_at": "2025-11-29T21:10:58.219200",
+  "evidence": {
+    "images": [
+      "generated_evidence/CLM_002_image_1.png",
+      "generated_evidence/CLM_002_image_2.png",
+      "generated_evidence/CLM_002_image_3.png",
+      "generated_evidence/CLM_002_image_4.png",
+      "generated_evidence/CLM_002_image_5.png",
+      "generated_evidence/CLM_002_image_6.png",
+      "generated_evidence/CLM_002_image_7.png",
+      "generated_evidence/CLM_002_image_8.png"
+    ],
+    "videos": [
+      "generated_evidence/CLM_002_video_1.mp4"
+    ],
+    "call_transcripts": [
+      "generated_evidence/CLM_002_transcript_1.txt"
+    ]
+  },
+  "summary": {
+    "total_images": 8,
+    "total_videos": 1,
+    "total_transcripts": 1
+  }
+}

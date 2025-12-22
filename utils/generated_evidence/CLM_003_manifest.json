@@ -1,0 +1,40 @@
+{
+  "claim_details": {
+    "topic": "kitchen fire",
+    "policyholder_name": "Bob Johnson",
+    "policy_number": "POL-11111",
+    "claim_number": "CLM-003",
+    "gender": "male"
+  },
+  "generated_at": "2025-11-29T21:31:20.929916",
+  "evidence": {
+    "images": [
+      "generated_evidence/CLM_003_image_1.png",
+      "generated_evidence/CLM_003_image_2.png",
+      "generated_evidence/CLM_003_image_3.png",
+      "generated_evidence/CLM_003_image_4.png",
+      "generated_evidence/CLM_003_image_5.png",
+      "generated_evidence/CLM_003_image_6.png",
+      "generated_evidence/CLM_003_image_7.png",
+      "generated_evidence/CLM_003_image_8.png",
+      "generated_evidence/CLM_003_image_9.png",
+      "generated_evidence/CLM_003_image_10.png",
+      "generated_evidence/CLM_003_image_11.png",
+      "generated_evidence/CLM_003_image_12.png"
+    ],
+    "videos": [
+      "generated_evidence/CLM_003_video_1.mp4",
+      "generated_evidence/CLM_003_video_2.mp4",
+      "generated_evidence/CLM_003_video_3.mp4"
+    ],
+    "call_transcripts": [
+      "generated_evidence/CLM_003_transcript_1.txt",
+      "generated_evidence/CLM_003_transcript_2.txt"
+    ]
+  },
+  "summary": {
+    "total_images": 12,
+    "total_videos": 3,
+    "total_transcripts": 2
+  }
+}

@@ -1,0 +1,17 @@
+FNOL Call Transcript
+Claim Number: CLM-002
+Policyholder: Jane Doe
+Policy Number: POL-67890
+Generated: 2025-12-21 12:19:46
+
+"Hi, my name is Jane Doe, and I'm calling to report an accident. My policy number is POL-67890.
+
+I was driving home from work yesterday evening around 5:30 PM on Main Street, and I got rear-ended while stopped at a red light near the intersection with Oak Avenue. The other driver just wasn't paying attention and hit my car from behind. We both pulled over into the parking lot of the convenience store on the corner to exchange information.
+
+The damage to my car is pretty bad - the entire rear bumper is crushed in, and the trunk won't close properly anymore. The taillights on the passenger side are also broken. Thankfully, I wasn't injured, just a bit shaken up. The other driver admitted fault and gave me their insurance information. Their name is Mike Smith, and his insurance is with State Farm.
+
+This happened yesterday, January 15th, at approximately 5:30 PM. I did file a police report, and the responding officer gave me an incident number. I took several photos of the damage and the scene on my phone.
+
+You can reach me anytime on my cell phone at 555-123-4567, or by email at jane.doe@email.com. My car is currently parked at my home address, which is 123 Maple Drive. I'll need to get it looked at soon since I use it to commute to work.
+
+Do you need any other information from me? I have all the other driver's details and the police report number if you need those as well."
