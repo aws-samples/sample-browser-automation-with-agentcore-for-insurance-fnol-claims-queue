@@ -23,10 +23,10 @@ import uuid
 import os
 
 REGION = "us-west-2"
-BUCKET_NAME = "agentcore-browser-recordings-piyali"
+BUCKET_NAME = "agentcore-browser-recordings-blog"
 PREFIX = "browser-recordings"
-ROLE_NAME = "AgentCoreBrowserRecordingRole"
-BROWSER_NAME = "ClaimsRecordingBrowser"
+ROLE_NAME = "BlogAgentCoreBrowserRecordingRole"
+BROWSER_NAME = "BlogClaimsRecordingBrowser"
 OUTPUT_BROWSER_FILE = "browser_id.txt"
 
 s3 = boto3.client("s3", region_name=REGION)
@@ -242,7 +242,7 @@ def main():
 
     print("\n=== SETUP COMPLETE ===")
     print(f"Browser ID: {browser_id}")
-    print("You can now run: python run_claims_automation.py")
+    print("You can now run: python run_claims_automation_fixed.py")
     print("Recordings → S3")
     print("Live View → AWS Console → AgentCore → Browsers → Sessions")
     print("browser_id.txt updated\n")

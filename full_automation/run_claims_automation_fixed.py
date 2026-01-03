@@ -528,7 +528,7 @@ def run_complexity_phase(nova):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_url", default="https://dsjo0fgkeahyy.cloudfront.net/")
+    parser.add_argument("--base_url", default=os.getenv("CLOUDFRONT_URL", "https://abcd.cloudfront.net/"))
     args = parser.parse_args()
 
     if not os.path.exists("browser_id.txt"):
