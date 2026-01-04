@@ -101,70 +101,78 @@ def analyze_evidence_tags(claim_id: str) -> Dict[str, Any]:
         # Analyze image tags for damage patterns
         image_analysis = evidence_analysis.get('images', {})
         if image_analysis.get('status') == 'completed':
-            image_tags = image_analysis.get('tags', [])
-            
-            # Look for severity indicators (exact tag matching)
-            if 'severe' in image_tags:
-                complexity_indicators.append("🔴 **[FROM IMAGES]** Severe damage detected in images")
-                complexity_score += 4
-            elif 'moderate' in image_tags:
-                complexity_indicators.append("🟡 **[FROM IMAGES]** Moderate damage detected in images")
-                complexity_score += 2
-            
-            # Look for damage types that require expertise
-            high_complexity_damage = ['fire_damage', 'water_damage', 'weather_damage', 'theft_damage']
-            if any(damage in image_tags for damage in high_complexity_damage):
-                complexity_indicators.append("🔴 **[FROM IMAGES]** Complex damage type requiring specialized assessment")
-                complexity_score += 3
-            
-            # Look for structural areas (property claims)
-            structural_areas = ['roof', 'interior', 'windshield']
-            if any(area in image_tags for area in structural_areas):
-                complexity_indicators.append("🟡 **[FROM IMAGES]** Structural damage areas identified")
-                complexity_score += 2
+            individual_images = image_analysis.get('individual_analyses', [])
+            for image_data in individual_images:
+                image_tags = image_data.get('analysis', {}).get('tags', [])
+                image_index = image_data.get('image_index', 1)
+                
+                # Look for severity indicators per image
+                if 'severe' in image_tags:
+                    complexity_indicators.append(f"🔴 **[FROM IMAGE {image_index}]** Severe damage detected")
+                    complexity_score += 4
+                elif 'moderate' in image_tags:
+                    complexity_indicators.append(f"🟡 **[FROM IMAGE {image_index}]** Moderate damage detected")
+                    complexity_score += 2
+                
+                # Look for damage types that require expertise
+                high_complexity_damage = ['fire_damage', 'water_damage', 'weather_damage', 'theft_damage']
+                if any(damage in image_tags for damage in high_complexity_damage):
+                    complexity_indicators.append(f"🔴 **[FROM IMAGE {image_index}]** Complex damage type requiring specialized assessment")
+                    complexity_score += 3
+                
+                # Look for structural areas (property claims)
+                structural_areas = ['roof', 'interior', 'windshield']
+                if any(area in image_tags for area in structural_areas):
+                    complexity_indicators.append(f"🟡 **[FROM IMAGE {image_index}]** Structural damage areas identified")
+                    complexity_score += 2
         
         # Analyze video tags for quality and consistency
         video_analysis = evidence_analysis.get('videos', {})
         if video_analysis.get('status') == 'completed':
-            video_tags = video_analysis.get('tags', [])
-            
-            # Look for quality issues
-            if 'poor' in video_tags:
-                complexity_indicators.append("🟡 **[FROM VIDEOS]** Poor video quality requires manual review")
-                complexity_score += 3
-            
-            # Look for consistency issues
-            if 'questionable' in video_tags or 'suspicious' in video_tags:
-                complexity_indicators.append("🔴 **[FROM VIDEOS]** Video evidence shows questionable elements")
-                complexity_score += 4
+            individual_videos = video_analysis.get('individual_analyses', [])
+            for video_data in individual_videos:
+                video_tags = video_data.get('analysis', {}).get('tags', [])
+                video_index = video_data.get('video_index', 1)
+                
+                # Look for quality issues per video
+                if 'poor_quality' in video_tags or 'blurry' in video_tags:
+                    complexity_indicators.append(f"🟡 **[FROM VIDEO {video_index}]** Poor video quality may complicate assessment")
+                    complexity_score += 2
+                
+                if 'staged' in video_tags or 'suspicious' in video_tags:
+                    complexity_indicators.append(f"🔴 **[FROM VIDEO {video_index}]** Suspicious video content detected")
+                    complexity_score += 4
         
         # Analyze audio/transcript tags for credibility and fraud indicators
         audio_analysis = evidence_analysis.get('audio', {})
         if audio_analysis.get('status') == 'completed':
-            audio_tags = audio_analysis.get('tags', [])
-            
-            # Look for story consistency issues
-            if 'major_inconsistencies' in audio_tags:
-                complexity_indicators.append("🔴 **[FROM AUDIO]** Major story inconsistencies detected")
-                complexity_score += 5
-            elif 'minor_inconsistencies' in audio_tags:
-                complexity_indicators.append("🟡 **[FROM AUDIO]** Minor story inconsistencies noted")
-                complexity_score += 2
-            
-            # Look for explicit fraud indicators (exact matches only)
-            if 'likely_fraud' in audio_tags or 'potential_fraud' in audio_tags or 'fraud_detected' in audio_tags:
-                complexity_indicators.append("🔴 **[FROM AUDIO]** Fraud indicators detected in caller statements")
-                complexity_score += 6
-            
-            # Look for credibility issues (exact matches only)
-            if 'low_credibility' in audio_tags or 'not_credible' in audio_tags:
-                complexity_indicators.append("🟡 **[FROM AUDIO]** Low caller credibility detected")
-                complexity_score += 3
-            
-            # Look for positive indicators (exact matches only)
-            if 'no_fraud_indicators' in audio_tags or 'story_consistent' in audio_tags or 'credible' in audio_tags:
-                complexity_indicators.append("🟢 **[FROM AUDIO]** Credible account with consistent story")
-                complexity_score = max(0, complexity_score - 2)  # Stronger positive signal
+            individual_audios = audio_analysis.get('individual_analyses', [])
+            for audio_data in individual_audios:
+                audio_tags = audio_data.get('analysis', {}).get('tags', [])
+                audio_index = audio_data.get('transcript_index', 1)
+                
+                # Look for story consistency issues per transcript
+                if 'major_inconsistencies' in audio_tags:
+                    complexity_indicators.append(f"🔴 **[FROM TRANSCRIPT {audio_index}]** Major story inconsistencies detected")
+                    complexity_score += 5
+                elif 'minor_inconsistencies' in audio_tags:
+                    complexity_indicators.append(f"🟡 **[FROM TRANSCRIPT {audio_index}]** Minor story inconsistencies noted")
+                    complexity_score += 2
+                
+                # Look for explicit fraud indicators
+                if any(fraud_tag in audio_tags for fraud_tag in ['likely_fraud', 'potential_fraud', 'fraud_detected']):
+                    complexity_indicators.append(f"🔴 **[FROM TRANSCRIPT {audio_index}]** Fraud indicators detected")
+                    complexity_score += 6
+                
+                # Look for credibility issues
+                if any(cred_tag in audio_tags for cred_tag in ['low_credibility', 'not_credible']):
+                    complexity_indicators.append(f"🟡 **[FROM TRANSCRIPT {audio_index}]** Low caller credibility detected")
+                    complexity_score += 3
+                
+                # Look for positive indicators
+                if any(pos_tag in audio_tags for pos_tag in ['no_fraud_indicators', 'story_consistent', 'credible']):
+                    complexity_indicators.append(f"🟢 **[FROM TRANSCRIPT {audio_index}]** Credible account with consistent story")
+                    complexity_score = max(0, complexity_score - 2)
         
         # Determine overall complexity factor
         if complexity_score >= 6:

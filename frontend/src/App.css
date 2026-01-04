@@ -909,3 +909,54 @@ body {
   min-width: 200px;
   width: 250px;
 }
+/* Individual Analysis Styles */
+.individual-analyses {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.individual-analysis {
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border-left: 3px solid #007bff;
+}
+
+.individual-analysis strong {
+  color: #495057;
+  margin-right: 8px;
+}
+
+/* Transcript Display Styles */
+.audio-transcripts {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.transcript-container {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.transcript-container h4 {
+  margin: 0 0 12px 0;
+  color: #495057;
+  font-size: 1.1rem;
+}
+
+.transcript-text {
+  background-color: white;
+  padding: 16px;
+  border-radius: 4px;
+  border-left: 3px solid #007bff;
+  line-height: 1.6;
+  color: #212529;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
