@@ -11,7 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from complexity_analyzer import ComplexityAnalyzer
-from evidence_analyzer import EvidenceAnalyzer, tag_s3_objects
+from evidence_analyzer import EvidenceAnalyzer, tag_s3_objects_individual
 
 app = FastAPI(title="FNOL Claims Processing API")
 
@@ -175,8 +175,8 @@ async def process_images_async(claim_id: str):
             ExpressionAttributeValues={
                 ':analysis': {
                     'status': 'completed',
-                    'tags': analysis_result['tags'],
                     'analysis': analysis_result['analysis'],
+                    'individual_analyses': analysis_result['individual_analyses'],
                     'analyzed_at': datetime.now().isoformat()
                 },
                 ':timestamp': datetime.now().isoformat()
@@ -184,8 +184,8 @@ async def process_images_async(claim_id: str):
         )
         
         # Tag S3 objects
-        if image_urls:
-            await tag_s3_objects(image_urls, analysis_result['tags'])
+        if image_urls and 'individual_analyses' in analysis_result:
+            await tag_s3_objects_individual(analysis_result['individual_analyses'], 'image_url')
             
     except Exception as e:
         # Update with error status
@@ -252,8 +252,8 @@ async def process_videos_async(claim_id: str):
             ExpressionAttributeValues={
                 ':analysis': {
                     'status': 'completed',
-                    'tags': analysis_result['tags'],
                     'analysis': analysis_result['analysis'],
+                    'individual_analyses': analysis_result['individual_analyses'],
                     'analyzed_at': datetime.now().isoformat()
                 },
                 ':timestamp': datetime.now().isoformat()
@@ -261,8 +261,8 @@ async def process_videos_async(claim_id: str):
         )
         
         # Tag S3 objects
-        if video_urls:
-            await tag_s3_objects(video_urls, analysis_result['tags'])
+        if video_urls and 'individual_analyses' in analysis_result:
+            await tag_s3_objects_individual(analysis_result['individual_analyses'], 'video_url')
             
     except Exception as e:
         # Update with error status
@@ -330,8 +330,8 @@ async def process_audio_async(claim_id: str):
             ExpressionAttributeValues={
                 ':analysis': {
                     'status': 'completed',
-                    'tags': analysis_result['tags'],
                     'analysis': analysis_result['analysis'],
+                    'individual_analyses': analysis_result['individual_analyses'],
                     'analyzed_at': datetime.now().isoformat()
                 },
                 ':timestamp': datetime.now().isoformat()
@@ -339,9 +339,8 @@ async def process_audio_async(claim_id: str):
         )
         
         # Tag S3 objects
-        all_urls = audio_urls + transcript_urls
-        if all_urls:
-            await tag_s3_objects(all_urls, analysis_result['tags'])
+        if (audio_urls or transcript_urls) and 'individual_analyses' in analysis_result:
+            await tag_s3_objects_individual(analysis_result['individual_analyses'], 'transcript_url')
             
     except Exception as e:
         # Update with error status
@@ -385,6 +384,29 @@ async def get_presigned_url(s3_url: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating presigned URL: {str(e)}")
+
+@app.get("/api/transcript")
+async def get_transcript(s3_url: str):
+    """Fetch transcript content from S3"""
+    try:
+        # Parse S3 URL
+        if not s3_url.startswith('s3://'):
+            raise HTTPException(status_code=400, detail="Invalid S3 URL format")
+        
+        parts = s3_url.replace('s3://', '').split('/', 1)
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail="Invalid S3 URL format")
+        
+        bucket, key = parts[0], parts[1]
+        
+        # Fetch transcript from S3
+        s3_client = boto3.client('s3')
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        transcript_text = response['Body'].read().decode('utf-8')
+        
+        return {"transcript": transcript_text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching transcript: {str(e)}")
 
 # Conditionally serve React app only if build directory exists
 frontend_build_path = "frontend/build"

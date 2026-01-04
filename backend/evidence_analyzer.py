@@ -277,9 +277,9 @@ class EvidenceAnalyzer:
                 'tags': unique_tags,
                 'analysis': {
                     'analysis_summary': summary,
-                    'individual_images': individual_analyses,
                     'total_images': len(image_urls)
                 },
+                'individual_analyses': individual_analyses,
                 'damage_severity': 'moderate'  # Could be determined from individual analyses
             }
             
@@ -457,6 +457,9 @@ Return ONLY valid JSON:
                     
                     all_tags.extend(video_tags)
                     
+                    # Add tags to the analysis
+                    video_analysis['tags'] = video_tags
+                    
                     individual_analyses.append({
                         'video_index': i+1,
                         'video_url': video_url,
@@ -503,9 +506,9 @@ Return ONLY valid JSON:
                 'tags': unique_tags,
                 'analysis': {
                     'analysis_summary': summary,
-                    'individual_videos': individual_analyses,
                     'total_videos': len(video_urls)
                 },
+                'individual_analyses': individual_analyses,
                 'video_quality': 'good'  # Could be determined from individual analyses
             }
             
@@ -675,10 +678,10 @@ Return ONLY valid JSON:
                 'tags': unique_tags,
                 'analysis': {
                     'analysis_summary': summary,
-                    'individual_transcripts': individual_analyses,
                     'total_transcripts': len(transcript_urls),
                     'total_audio_files': len(audio_urls)
                 },
+                'individual_analyses': individual_analyses,
                 'fraud_risk': 'low'  # Could be determined from individual analyses
             }
             
@@ -692,20 +695,29 @@ Return ONLY valid JSON:
                 'fraud_risk': 'unknown'
             }
 
-async def tag_s3_objects(s3_urls: list, tags: list):
-    """Tag S3 objects with analysis results"""
+async def tag_s3_objects_individual(individual_analyses: list, url_key: str):
+    """Tag each S3 object with its individual analysis results"""
     s3 = boto3.client('s3')
     
-    for url in s3_urls:
+    for analysis in individual_analyses:
         try:
+            file_url = analysis[url_key]  # 'image_url', 'video_url', etc.
+            file_tags = analysis['analysis'].get('tags', [])
+            file_index = analysis.get('image_index', analysis.get('video_index', analysis.get('transcript_index', 1)))
+            
             # Parse S3 URL
-            parts = url.replace('s3://', '').split('/', 1)
+            parts = file_url.replace('s3://', '').split('/', 1)
             bucket, key = parts[0], parts[1]
             
-            # Create tag set (S3 limit of 10 tags)
-            tag_set = [{'Key': 'analysis_status', 'Value': 'completed'}]
-            for i, tag in enumerate(tags[:9]):  # Leave room for analysis_status tag
-                tag_set.append({'Key': f'tag_{i}', 'Value': tag})
+            # Create tag set with file-specific prefix
+            tag_set = [
+                {'Key': 'analysis_status', 'Value': 'completed'},
+                {'Key': 'file_index', 'Value': str(file_index)}
+            ]
+            
+            # Add individual file tags (S3 limit of 10 tags total)
+            for i, tag in enumerate(file_tags[:8]):  # Leave room for status and index
+                tag_set.append({'Key': f'file_{file_index}_tag_{i}', 'Value': tag})
             
             s3.put_object_tagging(
                 Bucket=bucket,
@@ -714,4 +726,4 @@ async def tag_s3_objects(s3_urls: list, tags: list):
             )
             
         except Exception as e:
-            print(f"Error tagging S3 object {url}: {e}")
+            print(f"Error tagging S3 object {analysis.get(url_key, 'unknown')}: {e}")

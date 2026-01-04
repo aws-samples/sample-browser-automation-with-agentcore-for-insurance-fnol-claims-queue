@@ -309,6 +309,40 @@ function App() {
     return <audio src={presignedUrl} controls className="evidence-audio" />;
   };
 
+  const TranscriptDisplay = ({ s3Url, index }) => {
+    const [transcriptText, setTranscriptText] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+      const fetchTranscript = async () => {
+        try {
+          console.log('Fetching transcript from:', s3Url);
+          const response = await axios.get(`/api/transcript?s3_url=${encodeURIComponent(s3Url)}`);
+          console.log('Transcript text length:', response.data.transcript.length);
+          setTranscriptText(response.data.transcript);
+        } catch (error) {
+          console.error('Error fetching transcript:', error);
+          setError(error.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchTranscript();
+    }, [s3Url]);
+
+    if (loading) return <div className="evidence-loading">Loading transcript...</div>;
+    if (error) return <div className="evidence-error">Failed to load transcript: {error}</div>;
+    if (!transcriptText) return <div className="evidence-error">No transcript content</div>;
+
+    return (
+      <div className="transcript-container">
+        <h4>Transcript {index}</h4>
+        <div className="transcript-text">{transcriptText}</div>
+      </div>
+    );
+  };
+
   const ClaimCard = React.memo(({ claim, isDetailed = false }) => {
     const isAnalyzed = analyzedClaims.has(claim.claim_id);
     const isCurrentlyAnalyzing = analyzing === claim.claim_id;
@@ -358,9 +392,17 @@ function App() {
                       </button>
                     </div>
                     <div className="evidence-tags-box">
-                      {claim.evidence_analysis?.images?.status === 'completed' 
-                        ? claim.evidence_analysis.images.tags?.join(', ') || 'No tags found'
-                        : 'Analysis tags will appear here...'}
+                      {claim.evidence_analysis?.images?.status === 'completed' ? (
+                        claim.evidence_analysis.images.individual_analyses && claim.evidence_analysis.images.individual_analyses.length > 0 ? (
+                          <div className="individual-analyses">
+                            {claim.evidence_analysis.images.individual_analyses.map((analysis, index) => (
+                              <div key={index} className="individual-analysis">
+                                <strong>Image {analysis.image_index}:</strong> {analysis.analysis.tags?.join(', ') || analysis.analysis.damage_type || 'No tags'}
+                              </div>
+                            ))}
+                          </div>
+                        ) : 'No individual analyses found'
+                      ) : 'Analysis tags will appear here...'}
                     </div>
                     {getActiveEvidenceTab(claim.claim_id) === 'images' && loadedEvidenceRef.current[`${claim.claim_id}_images`] && (
                       <div className="evidence-content">
@@ -399,9 +441,17 @@ function App() {
                       </button>
                     </div>
                     <div className="evidence-tags-box">
-                      {claim.evidence_analysis?.videos?.status === 'completed' 
-                        ? claim.evidence_analysis.videos.tags?.join(', ') || 'No tags found'
-                        : 'Analysis tags will appear here...'}
+                      {claim.evidence_analysis?.videos?.status === 'completed' ? (
+                        claim.evidence_analysis.videos.individual_analyses && claim.evidence_analysis.videos.individual_analyses.length > 0 ? (
+                          <div className="individual-analyses">
+                            {claim.evidence_analysis.videos.individual_analyses.map((analysis, index) => (
+                              <div key={index} className="individual-analysis">
+                                <strong>Video {analysis.video_index}:</strong> {analysis.analysis.tags?.join(', ') || analysis.analysis.damage_type || 'No tags'}
+                              </div>
+                            ))}
+                          </div>
+                        ) : 'No individual analyses found'
+                      ) : 'Analysis tags will appear here...'}
                     </div>
                     {getActiveEvidenceTab(claim.claim_id) === 'videos' && loadedEvidenceRef.current[`${claim.claim_id}_videos`] && (
                       <div className="evidence-content">
@@ -440,9 +490,17 @@ function App() {
                       </button>
                     </div>
                     <div className="evidence-tags-box">
-                      {claim.evidence_analysis?.audio?.status === 'completed' 
-                        ? claim.evidence_analysis.audio.tags?.join(', ') || 'No tags found'
-                        : 'Analysis tags will appear here...'}
+                      {claim.evidence_analysis?.audio?.status === 'completed' ? (
+                        claim.evidence_analysis.audio.individual_analyses && claim.evidence_analysis.audio.individual_analyses.length > 0 ? (
+                          <div className="individual-analyses">
+                            {claim.evidence_analysis.audio.individual_analyses.map((analysis, index) => (
+                              <div key={index} className="individual-analysis">
+                                <strong>Transcript {analysis.transcript_index}:</strong> {analysis.analysis.tags?.join(', ') || analysis.analysis.fraud_risk || 'No tags'}
+                              </div>
+                            ))}
+                          </div>
+                        ) : 'No individual analyses found'
+                      ) : 'Analysis tags will appear here...'}
                     </div>
                     {getActiveEvidenceTab(claim.claim_id) === 'audio' && loadedEvidenceRef.current[`${claim.claim_id}_audio`] && (
                       <div className="evidence-content">
@@ -638,9 +696,13 @@ function App() {
                   {evidenceType === 'videos' && evidenceUrls.map((url, index) => (
                     <EvidenceVideo key={index} s3Url={url} />
                   ))}
-                  {evidenceType === 'audio' && evidenceUrls.map((url, index) => (
-                    <EvidenceAudio key={index} s3Url={url} />
-                  ))}
+                  {evidenceType === 'audio' && (
+                    <div className="audio-transcripts">
+                      {claim.evidence_urls?.transcripts?.map((transcriptUrl, index) => (
+                        <TranscriptDisplay key={index} s3Url={transcriptUrl} index={index + 1} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -649,7 +711,21 @@ function App() {
               <div className="analysis-results">
                 <h4>Analysis Complete</h4>
                 <div className="evidence-tags">
-                  {claim.evidence_analysis[evidenceType].tags?.join(', ')}
+                  {claim.evidence_analysis[evidenceType].individual_analyses && claim.evidence_analysis[evidenceType].individual_analyses.length > 0 ? (
+                    <div className="individual-analyses">
+                      {claim.evidence_analysis[evidenceType].individual_analyses.map((analysis, index) => (
+                        <div key={index} className="individual-analysis">
+                          <strong>
+                            {evidenceType === 'images' ? `Image ${analysis.image_index}` :
+                             evidenceType === 'videos' ? `Video ${analysis.video_index}` :
+                             `Transcript ${analysis.transcript_index}`}:
+                          </strong> {analysis.analysis.tags?.join(', ') || 
+                                    analysis.analysis.damage_type || 
+                                    analysis.analysis.fraud_risk || 'No tags'}
+                        </div>
+                      ))}
+                    </div>
+                  ) : 'No individual analyses found'}
                 </div>
               </div>
             )}
