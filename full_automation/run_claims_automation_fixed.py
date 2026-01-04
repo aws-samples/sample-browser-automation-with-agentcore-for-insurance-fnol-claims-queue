@@ -10,7 +10,7 @@ from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 import urllib.parse
 from nova_act import NovaAct
-from nova_act.types.act_errors import ActInvalidModelGenerationError
+from nova_act.types.act_errors import ActInvalidModelGenerationError, ActBadRequestError
 
 
 console = Console()
@@ -136,7 +136,7 @@ def click_evidence_button(nova):
         print("DEBUG: No response found, defaulting to ALL_PROCESSED")
         return "ALL_PROCESSED"
 
-    except ActInvalidModelGenerationError:
+    except Exception as e:
         console.print("[yellow]⚠️ Model returned no program; assuming inline processing[/yellow]")
         return "NO_MODAL"
 
@@ -369,18 +369,33 @@ def has_more_content_below(nova):
     """Check if more content exists below current viewport."""
     try:
         resp = nova.act_get("""
-DO NOT SCROLL. DO NOT MOVE THE PAGE.
+Look only at the CURRENT screen. Do not scroll or move the page.
 
-Look at the CURRENT screen only.
+Your task is to determine whether additional content exists below the visible area.
 
-Check BOTH indicators:
-1. Scroll bar: Look at the scroll bar on the right side - is it at the very bottom?
-2. Content: Is content clearly cut off and continues below the visible area?
+Use BOTH of the following signals:
 
-- If scroll bar is at bottom AND no content is cut off: respond "AT_BOTTOM"
-- If scroll bar shows more scrolling possible OR content is cut off: respond "MORE_BELOW"
+1. Scroll position:
+   - Examine the vertical scroll bar on the right.
+   - Determine whether the scroll thumb is fully at the bottom or if further scrolling is possible.
 
-Use both the scroll bar position and content visibility to decide.
+2. Content continuity:
+   - Check whether any page content appears truncated, clipped, or continues beyond the bottom edge.
+   - Note: A screen that looks visually complete can still have more content below it.
+
+Decision rules:
+- Respond "AT_BOTTOM" only if:
+  • The scroll bar is fully at the bottom, AND
+  • There is no indication that content continues below the visible area.
+
+- Respond "MORE_BELOW" if:
+  • The scroll bar indicates additional scrolling is possible, OR
+  • Any content appears to continue beyond the visible area, even if the screen looks complete.
+
+Respond with exactly one of:
+AT_BOTTOM
+MORE_BELOW
+
 """)
         
         # DEBUG: Print response details
@@ -401,7 +416,7 @@ Use both the scroll bar position and content visibility to decide.
     except Exception as e:
         print(f"DEBUG has_more_content_below: Exception = {e}")
         print(f"DEBUG has_more_content_below: Exception type = {type(e)}")
-        return False  # Assume at bottom if error
+        return "MORE_BELOW"  # Assume not at bottom if error
 
 def scroll_down_one_section(nova):
     """Scroll down just enough to reveal the next section."""
@@ -498,7 +513,7 @@ def run_complexity_phase(nova):
     time.sleep(2)
     
     scroll_attempts = 0
-    max_scroll_attempts = 10  # Prevent infinite loops
+    max_scroll_attempts = 5  # Prevent infinite loops
     
     while scroll_attempts < max_scroll_attempts:
         result = click_complexity_button(nova)
@@ -528,7 +543,7 @@ def run_complexity_phase(nova):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_url", default="https://dsjo0fgkeahyy.cloudfront.net/")
+    parser.add_argument("--base_url", default=os.getenv("CLOUDFRONT_URL", "https://abcd.cloudfront.net/"))
     args = parser.parse_args()
 
     if not os.path.exists("browser_id.txt"):

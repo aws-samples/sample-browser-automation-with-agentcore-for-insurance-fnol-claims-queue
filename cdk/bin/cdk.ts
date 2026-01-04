@@ -6,7 +6,7 @@ import { WAFStack } from '../lib/waf-stack';
 const app = new cdk.App();
 
 // WAF Stack in us-east-1 (required for CloudFront)
-const wafStack = new WAFStack(app, 'ClaimsWAFStack', {
+const wafStack = new WAFStack(app, 'ClaimsFNOLWAFStack', {
   crossRegionReferences: true,
   env: { 
     account: process.env.CDK_DEFAULT_ACCOUNT, 
@@ -15,7 +15,7 @@ const wafStack = new WAFStack(app, 'ClaimsWAFStack', {
 });
 
 // Main stack in your preferred region
-new ClaimsProcessingStack(app, 'ClaimsProcessingStack', {
+new ClaimsProcessingStack(app, 'ClaimsFNOLProcessingStack', {
   wafStack: wafStack,
   crossRegionReferences: true,
   env: { 

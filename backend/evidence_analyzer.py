@@ -362,9 +362,9 @@ This is video {i+1} of {len(video_urls)}.
 
 Analyze the video and identify:
 1. Primary damage type (collision, weather, fire, vandalism, water)
-2. Damage severity (minor, moderate, severe)
-3. Video quality (poor, good, excellent)
-4. Consistency with typical claim scenarios (consistent, questionable, suspicious)
+2. Damage severity (minor damage, moderate damage, severe damage)
+3. Video quality (poor quality, good quality, excellent quality)
+4. Consistency with typical claim scenarios (consistent with scenario, questionable for scenario, suspicious scenario)
 5. Temporal analysis of damage progression (max 15 words)
 6. Analysis summary (max 30 words)
 
