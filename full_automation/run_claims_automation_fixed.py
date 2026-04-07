@@ -552,7 +552,7 @@ def main():
 
     browser_id = open("browser_id.txt").read().strip()
     session = boto3.Session()
-    region = "us-west-2"
+    region = os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION") or session.region_name or "us-east-1"
     agentcore = session.client("bedrock-agentcore", region_name=region)
 
     session_id = agentcore.start_browser_session(

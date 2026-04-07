@@ -13,14 +13,14 @@ from strands.models import BedrockModel
 class EvidenceAnalyzer:
     def __init__(self):
         # Ensure Bedrock region (override from env if you prefer)
-        os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
+        os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
         
         self._executor = ThreadPoolExecutor(max_workers=1)
         
         # Build a Bedrock model object for Strands
         self.model = BedrockModel(
             model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
-            region_name=os.getenv("AWS_DEFAULT_REGION", "us-west-2"),
+            region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
             temperature=0.2,
         )
         
@@ -172,7 +172,7 @@ class EvidenceAnalyzer:
                         retries={'max_attempts': 3}
                     )
                     bedrock = boto3.client('bedrock-runtime', 
-                                         region_name=os.getenv("AWS_DEFAULT_REGION", "us-west-2"),
+                                         region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
                                          config=config)
                     
                     # Prepare the message for Claude with image

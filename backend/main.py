@@ -24,7 +24,7 @@ evidence_analyzer = EvidenceAnalyzer()
 # Initialize DynamoDB
 def init_dynamodb():
     """Initialize DynamoDB client and table"""
-    dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-west-2'))
+    dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'))
     table_name = os.getenv('CLAIMS_TABLE_NAME', 'Claims')
     table = dynamodb.Table(table_name)
     return table

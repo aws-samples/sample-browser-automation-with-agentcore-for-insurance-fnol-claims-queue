@@ -84,7 +84,7 @@ def analyze_evidence_tags(claim_id: str) -> Dict[str, Any]:
     
     try:
         # Get evidence analysis from DynamoDB
-        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-west-2'))
+        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'))
         table_name = os.getenv('CLAIMS_TABLE_NAME', 'Claims')
         table = dynamodb.Table(table_name)
         
@@ -206,14 +206,14 @@ def analyze_evidence_tags(claim_id: str) -> Dict[str, Any]:
 class ComplexityAnalyzer:
     def __init__(self):
         # Ensure Bedrock region (override from env if you prefer)
-        os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
+        os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
         self._executor = ThreadPoolExecutor(max_workers=1)
 
         # Build a Bedrock model object for Strands
         self.model = BedrockModel(
             model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
-            region_name=os.getenv("AWS_DEFAULT_REGION", "us-west-2"),
+            region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
             temperature=0.2,
         )
 

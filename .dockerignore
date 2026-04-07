@@ -1,5 +1,15 @@
 .git/
-cdk.out/
-node_modules/
+.gitignore
+.kiro/
+**/cdk.out/
+**/node_modules/
+**/__pycache__/
+*_venv/
 *.log
+*.pyc
+*.md
 .DS_Store
+.env
+full_automation/
+utils/generated_evidence/
+cdk.context.json
