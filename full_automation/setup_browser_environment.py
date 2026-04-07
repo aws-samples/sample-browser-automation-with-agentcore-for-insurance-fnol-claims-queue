@@ -21,9 +21,11 @@ import botocore
 import json
 import uuid
 import os
+import time
 
-REGION = "us-west-2"
-BUCKET_NAME = "agentcore-browser-recordings-blog"
+REGION = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or boto3.Session().region_name or "us-east-1"
+ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
+BUCKET_NAME = f"agentcore-browser-recordings-{ACCOUNT_ID}-{REGION}"
 PREFIX = "browser-recordings"
 ROLE_NAME = "BlogAgentCoreBrowserRecordingRole"
 BROWSER_NAME = "BlogClaimsRecordingBrowser"
@@ -33,7 +35,6 @@ s3 = boto3.client("s3", region_name=REGION)
 iam = boto3.client("iam")
 agentcore = boto3.client("bedrock-agentcore-control", region_name=REGION)
 sts = boto3.client("sts")
-ACCOUNT_ID = sts.get_caller_identity()["Account"]
 
 
 # ---------------------------------------------------------------------------
@@ -54,10 +55,13 @@ def create_bucket():
         return
 
     print(f"⏳ Creating S3 bucket: {BUCKET_NAME}")
-    s3.create_bucket(
-        Bucket=BUCKET_NAME,
-        CreateBucketConfiguration={"LocationConstraint": REGION}
-    )
+    if REGION == "us-east-1":
+        s3.create_bucket(Bucket=BUCKET_NAME)
+    else:
+        s3.create_bucket(
+            Bucket=BUCKET_NAME,
+            CreateBucketConfiguration={"LocationConstraint": REGION}
+        )
     print(f"✔ Created bucket: {BUCKET_NAME}")
 
 
@@ -181,6 +185,10 @@ def create_iam_role():
         )
 
         print("✔ Attached S3 + CloudWatch permissions.")
+
+        # IAM roles take a few seconds to propagate globally
+        print("⏳ Waiting for IAM role to propagate...")
+        time.sleep(10)
 
         return role_arn
 

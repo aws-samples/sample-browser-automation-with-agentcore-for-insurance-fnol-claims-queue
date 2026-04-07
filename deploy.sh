@@ -8,8 +8,10 @@ echo "🚀 Starting Claims Processing Deployment..."
 
 # Set AWS environment variables for CDK
 export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-export CDK_DEFAULT_REGION=us-west-2
-export AWS_DEFAULT_REGION=us-west-2
+CDK_DEFAULT_REGION=${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || echo "us-east-1")}}
+export CDK_DEFAULT_REGION
+export AWS_DEFAULT_REGION=$CDK_DEFAULT_REGION
+export AWS_REGION=$CDK_DEFAULT_REGION
 
 echo "📋 Using AWS Account: $CDK_DEFAULT_ACCOUNT"
 echo "📋 Using AWS Region: $CDK_DEFAULT_REGION"
@@ -24,6 +26,7 @@ npm install
 # Bootstrap CDK if needed
 echo "🔧 Bootstrapping CDK..."
 cdk bootstrap aws://$CDK_DEFAULT_ACCOUNT/$CDK_DEFAULT_REGION
+cdk bootstrap aws://$CDK_DEFAULT_ACCOUNT/us-east-1
 
 # Deploy the stack (this builds the Docker container and deploys everything)
 echo "🏗️ Deploying CDK stack..."
@@ -32,8 +35,8 @@ cdk deploy --all --require-approval never
 echo "✅ Deployment completed successfully!"
 echo ""
 echo "📊 Resources created:"
-echo "  - DynamoDB Table: ClaimsEvidence"
-echo "  - S3 Evidence Bucket: claims-evidencestore-$CDK_DEFAULT_ACCOUNT-$CDK_DEFAULT_REGION"
+echo "  - DynamoDB Table: Claims"
+echo "  - S3 Evidence Bucket: claims-evidence-$CDK_DEFAULT_ACCOUNT-$CDK_DEFAULT_REGION"
 echo "  - ECS Fargate Service with containerized app"
 echo "  - Application Load Balancer"
 echo "  - CloudFront Distribution. Make note of the cloudfront url."
@@ -53,8 +56,8 @@ echo "   # python3 generate_claim_evidence.py \"Wind hail damage...\" all --imag
 echo ""
 echo "   3. Seed the database:"
 echo "   cd backend   "
-echo "   export CLAIMS_TABLE_NAME="ClaimsEvidence"     "
-echo "   export EVIDENCE_BUCKET_NAME="claims-evidencestore-$CDK_DEFAULT_ACCOUNT-$CDK_DEFAULT_REGION" "
+echo "   export CLAIMS_TABLE_NAME=\"Claims\"     "
+echo "   export EVIDENCE_BUCKET_NAME=\"claims-evidence-$CDK_DEFAULT_ACCOUNT-$CDK_DEFAULT_REGION\" "
 echo "   python3 seed_data.py "
 echo ""
 echo "   4. Set up browser automation (optional):"

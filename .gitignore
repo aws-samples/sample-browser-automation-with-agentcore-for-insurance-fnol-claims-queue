@@ -18,7 +18,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Python build artifacts (not cdk/lib/)
 lib64/
 parts/
 sdist/
@@ -33,12 +33,16 @@ MANIFEST
 venv/
 env/
 ENV/
-automation_venv/
-browser_automate/automation_venv/
+*_venv/
+
+# CDK
+**/cdk.out/
+cdk.context.json
 
 # IDE
 .vscode/
 .idea/
+.kiro/
 *.swp
 *.swo
 *~
@@ -69,6 +73,10 @@ logs/
 # Chrome automation
 chromedriver
 *.crx
+
+# Automation artifacts
+full_automation/screenshots/
+full_automation/browser_id.txt
 
 # Temporary files
 *.tmp

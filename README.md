@@ -32,9 +32,10 @@ The solution separates concerns across four layers:
 
 - **AWS Account** with permissions for CDK, ECS, S3, DynamoDB, ALB, CloudFront, and IAM
 - **AWS CLI** configured with credentials
+- **Node.js** (for CDK)
 - **CDK CLI**: `npm install -g aws-cdk`
 - **Python 3.12** for local scripts (evidence generation, data seeding, browser automation)
-- **NOVA_ACT_API_KEY**: Required for AgentCore Browser Automation (export as environment variable)
+- **NOVA_ACT_API_KEY**: Required for AgentCore Browser Automation. Obtain from [nova.amazon.com/act](https://nova.amazon.com/act) using your amazon.com account (separate from AWS credentials)
 
 ## Deployment
 
@@ -45,13 +46,19 @@ The solution separates concerns across four layers:
 git clone https://github.com/pkamra/sample-browser-automation-with-agentcore-for-insurance-fnol-claims-queue.git
 cd sample-browser-automation-with-agentcore-for-insurance-fnol-claims-queue
 
+# Configure AWS credentials (if using SSO)
+export AWS_PROFILE=<your-profile-name>
+aws sso login
+# Verify credentials
+aws sts get-caller-identity
+
 # Deploy to AWS (provisions infrastructure and deploys containerized app)
 ./deploy.sh
 ```
 
-The deployment creates:
-- **DynamoDB Table**: `ClaimsEvidence`
-- **S3 Bucket**: `claims-evidencestore-<account>-<region>`
+The deployment deploys to your configured AWS region (defaults to `us-east-1`). It creates:
+- **DynamoDB Table**: `Claims`
+- **S3 Bucket**: `claims-evidence-<account>-<region>`
 - **ECS Service**: Containerized FNOL portal and backend on Fargate
 - **CloudFront Distribution**: Public-facing URL for the FNOL portal
 
@@ -61,7 +68,7 @@ Wait 2–3 minutes for the ECS service to become healthy before proceeding.
 
 ### Step 2: Generate Evidence (Optional)
 
-Generate synthetic claim evidence using Amazon Nova models:
+Generate synthetic claim evidence using Amazon Nova models. Pre-generated evidence for all 5 sample claims is included in `utils/generated_evidence/`. You only need to regenerate if you want fresh or different evidence.
 
 ```bash
 cd utils
@@ -77,20 +84,25 @@ python3 generate_claim_evidence.py \
 
 ### Step 3: Seed the Database
 
-Populate the DynamoDB table with initial claims data:
+Populate the DynamoDB table with initial claims data and upload evidence to S3:
 
 ```bash
+# From the repository root
 cd backend
-export CLAIMS_TABLE_NAME=ClaimsEvidence
-export EVIDENCE_BUCKET_NAME=claims-evidencestore-<account>-<region>
+export CLAIMS_TABLE_NAME=Claims
+export EVIDENCE_BUCKET_NAME=claims-evidence-<account>-<region>
+export AWS_DEFAULT_REGION=<region>  # Must match your deployment region
 python3 seed_data.py
 ```
+
+The seed script inserts 5 sample claims (CLM-001 through CLM-005), uploads evidence files from `utils/generated_evidence/` to S3, and links the S3 URLs to each claim in DynamoDB.
 
 ### Step 4: Run Browser Automation
 
 Set up and execute the agentic FNOL intake workflow:
 
 ```bash
+# From the repository root
 cd full_automation
 python3.12 -m venv automation_venv
 source automation_venv/bin/activate
@@ -99,6 +111,7 @@ pip install -r requirements.txt
 # Configure environment
 export NOVA_ACT_API_KEY=your-nova-act-api-key-here
 export CLOUDFRONT_URL=https://<your-cloudfront-distribution>.cloudfront.net
+export AWS_DEFAULT_REGION=<region>  # Must match your deployment region
 
 # Initialize browser environment and run automation
 python3 setup_browser_environment.py
@@ -112,7 +125,10 @@ The automation will:
 4. Classify claim complexity
 5. Generate structured notes
 
-**Execution artifacts** (screenshots, logs, metadata) are saved in `full_automation/screenshots/` for audit and troubleshooting.
+**Execution artifacts** are saved in `full_automation/screenshots/<session-id>/` for each run:
+- Screenshots captured at each browser interaction step
+- `execution.log` with prompts, agent decisions, and timing
+- Session metadata for correlating with AgentCore console
 
 ## How It Works
 
@@ -157,8 +173,9 @@ This produces a complete execution trail showing what the agent saw, why it acte
 
 **DynamoDB Access Denied**: Verify ECS task role has DynamoDB permissions  
 **Claims Not Loading**: Check CloudWatch logs for ECS service errors  
-**Bedrock Analysis Fails**: Ensure region is set to `us-west-2`  
-**Browser Automation Fails**: Verify `NOVA_ACT_API_KEY` and `CLOUDFRONT_URL` are set correctly
+**Bedrock Analysis Fails**: Ensure your deployment region supports the Bedrock models used (Claude Sonnet)  
+**Browser Automation Fails**: Verify `NOVA_ACT_API_KEY` and `CLOUDFRONT_URL` are set correctly. If `setup_browser_environment.py` fails on role validation, wait a few seconds and retry (IAM propagation delay).  
+**Region Mismatch**: Ensure `AWS_DEFAULT_REGION` matches the region where you deployed. The browser automation, seed script, and CDK stack must all target the same region.
 
 ### View Logs
 
@@ -173,8 +190,9 @@ cat full_automation/screenshots/<session-id>/execution.log
 ## Related Resources
 
 - **Blog Post**: *Hands-free first notice of loss: Using Strands Agents and AgentCore Browser Automation for intelligent claims intake*
-- **Strands Agents Documentation**: [Amazon Bedrock Agents](https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html)
-- **AgentCore Browser Automation**: Contact AWS for access and documentation
+- **Amazon Nova Act**: [nova.amazon.com/act](https://nova.amazon.com/act)
+- **Strands Agents**: [strandsagents.com](https://strandsagents.com/latest/)
+- **AgentCore Browser Documentation**: [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/browser-tool.html)
 
 ## License
 

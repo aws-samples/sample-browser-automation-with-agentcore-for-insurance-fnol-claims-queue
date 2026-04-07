@@ -261,12 +261,14 @@ def enhance_claims_with_evidence(table, force_update=False):
 def seed_dynamodb(force_update=False):
     """Idempotent seeding: Insert new claims and enhance existing ones with evidence"""
     try:
-        # Initialize DynamoDB
-        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-west-2'))
+        # Initialize DynamoDB - detect region from environment, profile, or default
+        session = boto3.Session()
+        region = os.getenv('AWS_DEFAULT_REGION') or os.getenv('AWS_REGION') or session.region_name or 'us-east-1'
+        dynamodb = boto3.resource('dynamodb', region_name=region)
         table_name = os.getenv('CLAIMS_TABLE_NAME', 'Claims')
         table = dynamodb.Table(table_name)
         
-        print(f"Processing table: {table_name}")
+        print(f"Processing table: {table_name} in {region}")
         
         # Get existing claims
         response = table.scan()
