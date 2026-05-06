@@ -1,729 +1,513 @@
-import boto3
+import os
 import json
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
-import os
 import base64
-import requests
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, Any
 
-from strands import Agent
+import boto3
+import requests
+from botocore.config import Config
+from strands import Agent, tool
 from strands.models import BedrockModel
+
+
+# ---------- S3 helpers ----------
+
+_s3_client = boto3.client('s3', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'))
+
+
+def _parse_s3_url(s3_url: str) -> tuple:
+    parts = s3_url.replace('s3://', '').split('/', 1)
+    return parts[0], parts[1]
+
+
+def _get_presigned_url(s3_url: str) -> str:
+    try:
+        bucket, key = _parse_s3_url(s3_url)
+        return _s3_client.generate_presigned_url(
+            'get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600
+        )
+    except Exception as e:
+        print(f"Error generating presigned URL for {s3_url}: {e}")
+        return None
+
+
+# ---------- Tools ----------
+
+@tool(name="get_claim_evidence", description="Fetch claim evidence URLs from DynamoDB for a given claim_id. Returns the available image, video, audio, and transcript URLs.")
+def get_claim_evidence(claim_id: str) -> Dict[str, Any]:
+    """Fetch evidence URLs from DynamoDB so the agent knows what's available."""
+    print(f"[Tool] get_claim_evidence: fetching evidence for {claim_id}")
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'))
+        table = dynamodb.Table(os.getenv('CLAIMS_TABLE_NAME', 'Claims'))
+        response = table.get_item(Key={'claim_id': claim_id})
+
+        if 'Item' not in response:
+            return {"error": f"Claim {claim_id} not found"}
+
+        claim = response['Item']
+        evidence_urls = claim.get('evidence_urls', {})
+        return {
+            "claim_id": claim_id,
+            "images": evidence_urls.get('images', []),
+            "videos": evidence_urls.get('videos', []),
+            "audio": evidence_urls.get('audio', []),
+            "transcripts": evidence_urls.get('transcripts', []),
+            "claim_type": claim.get('type', ''),
+            "claim_subtype": claim.get('subtype', ''),
+            "estimated_damage": claim.get('estimated_damage', 0)
+        }
+    except Exception as e:
+        print(f"[Tool] Error fetching claim evidence: {e}")
+        return {"error": str(e)}
+
+
+@tool(name="examine_image", description="Download an image from S3 and analyze it for damage type, severity, affected areas, and fraud indicators using vision AI.")
+def examine_image(image_s3_url: str, image_index: int, total_images: int, claim_id: str) -> Dict[str, Any]:
+    """Examine a single insurance claim image via Bedrock vision."""
+    print(f"[Tool] examine_image: image {image_index}/{total_images} for claim {claim_id}")
+
+    try:
+        presigned_url = _get_presigned_url(image_s3_url)
+        if not presigned_url:
+            return {"error": "Failed to generate presigned URL", "image_index": image_index}
+
+        response = requests.get(presigned_url, timeout=30)
+        response.raise_for_status()
+        image_base64 = base64.b64encode(response.content).decode('utf-8')
+        print(f"[Tool] Downloaded image {image_index}, size: {len(response.content)} bytes")
+    except Exception as e:
+        return {"error": f"Failed to download image: {e}", "image_index": image_index}
+
+    analysis_prompt = (
+        f"You are analyzing insurance claim image {image_index} of {total_images} for claim {claim_id}.\n"
+        "Identify:\n"
+        "1. Primary damage type (collision, weather_damage, vandalism, fire_damage, water_damage, theft_damage)\n"
+        "2. Severity (minor, moderate, severe)\n"
+        "3. Affected area (front_end, rear_end, driver_side, passenger_side, roof, interior, windshield, bumper)\n"
+        "4. Characteristics (scratches, dents, cracks, breaks, burns, water_stains, missing_parts)\n"
+        "5. Any fraud indicators or staging signs\n\n"
+        "Return ONLY valid JSON:\n"
+        '{"tags": ["tag1","tag2","tag3"], "damage_type": "...", "severity": "...", '
+        '"affected_area": "...", "analysis_summary": "..."}'
+    )
+
+    try:
+        config = Config(read_timeout=300, connect_timeout=60, retries={'max_attempts': 3})
+        bedrock = boto3.client('bedrock-runtime', region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"), config=config)
+
+        resp = bedrock.invoke_model(
+            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 1000,
+                "temperature": 0.2,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": analysis_prompt},
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_base64}}
+                    ]
+                }]
+            })
+        )
+
+        body = json.loads(resp['body'].read())
+        text = body['content'][0]['text']
+        clean = text.strip().removeprefix('```json').removesuffix('```').strip()
+        result = json.loads(clean)
+        result['image_index'] = image_index
+        result['image_url'] = image_s3_url
+        print(f"[Tool] Image {image_index} analysis: severity={result.get('severity')}, type={result.get('damage_type')}")
+        return result
+
+    except Exception as e:
+        print(f"[Tool] Vision analysis failed for image {image_index}: {e}")
+        return {"error": str(e), "image_index": image_index, "image_url": image_s3_url, "tags": ["analysis_error"]}
+
+
+@tool(name="examine_video", description="Download a video from S3 and analyze it for damage progression, consistency, and quality using Nova 2 Lite video AI.")
+def examine_video(video_s3_url: str, video_index: int, total_videos: int, claim_id: str) -> Dict[str, Any]:
+    """Examine a single insurance claim video via Nova 2 Lite."""
+    print(f"[Tool] examine_video: video {video_index}/{total_videos} for claim {claim_id}")
+
+    try:
+        presigned_url = _get_presigned_url(video_s3_url)
+        if not presigned_url:
+            return {"error": "Failed to generate presigned URL", "video_index": video_index}
+
+        response = requests.get(presigned_url, timeout=120)
+        response.raise_for_status()
+        video_bytes = response.content
+        print(f"[Tool] Downloaded video {video_index}, size: {len(video_bytes)} bytes")
+    except Exception as e:
+        return {"error": f"Failed to download video: {e}", "video_index": video_index}
+
+    user_prompt = (
+        f"Analyze this MP4 insurance claim video for claim {claim_id}. "
+        f"This is video {video_index} of {total_videos}.\n\n"
+        "Identify:\n"
+        "1. Primary damage type (collision, weather, fire, vandalism, water)\n"
+        "2. Damage severity (minor damage, moderate damage, severe damage)\n"
+        "3. Video quality (poor quality, good quality, excellent quality)\n"
+        "4. Consistency (consistent with scenario, questionable, suspicious)\n"
+        "5. Temporal analysis (max 15 words)\n"
+        "6. Analysis summary (max 30 words)\n\n"
+        "Return ONLY valid JSON:\n"
+        '{"damage_type":"","severity":"","video_quality":"","consistency":"","temporal_analysis":"","analysis_summary":""}'
+    )
+
+    try:
+        config = Config(read_timeout=600, connect_timeout=60, retries={'max_attempts': 3})
+        bedrock = boto3.client('bedrock-runtime', region_name="us-east-1", config=config)
+
+        resp = bedrock.converse(
+            modelId="global.amazon.nova-2-lite-v1:0",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"text": user_prompt},
+                    {"video": {"format": "mp4", "source": {"bytes": video_bytes}}}
+                ]
+            }],
+            additionalModelRequestFields={"reasoningConfig": {"type": "enabled", "maxReasoningEffort": "medium"}}
+        )
+
+        text = None
+        for content in resp["output"]["message"]["content"]:
+            if "text" in content:
+                text = content["text"]
+                break
+
+        if not text:
+            return {"error": "Nova response contained no text", "video_index": video_index, "tags": ["analysis_error"]}
+
+        clean = text.strip().removeprefix('```json').removesuffix('```').strip()
+        result = json.loads(clean)
+
+        tags = []
+        for field in ['damage_type', 'severity', 'video_quality', 'consistency']:
+            val = result.get(field, '')
+            if val:
+                tags.append(val.lower().replace(' ', '_'))
+        result['tags'] = tags
+        result['video_index'] = video_index
+        result['video_url'] = video_s3_url
+        print(f"[Tool] Video {video_index} analysis: severity={result.get('severity')}, type={result.get('damage_type')}")
+        return result
+
+    except Exception as e:
+        print(f"[Tool] Nova video analysis failed for video {video_index}: {e}")
+        return {"error": str(e), "video_index": video_index, "video_url": video_s3_url, "tags": ["analysis_error"]}
+
+
+@tool(name="examine_transcript", description="Download a call transcript from S3 and return its content for analysis.")
+def examine_transcript(transcript_s3_url: str, transcript_index: int, total_transcripts: int, claim_id: str) -> Dict[str, Any]:
+    """Download and return transcript content."""
+    print(f"[Tool] examine_transcript: transcript {transcript_index}/{total_transcripts} for claim {claim_id}")
+
+    try:
+        presigned_url = _get_presigned_url(transcript_s3_url)
+        if not presigned_url:
+            return {"error": "Failed to generate presigned URL", "transcript_index": transcript_index}
+
+        response = requests.get(presigned_url, timeout=30)
+        response.raise_for_status()
+        transcript_text = response.text
+        print(f"[Tool] Downloaded transcript {transcript_index}, length: {len(transcript_text)} chars")
+    except Exception as e:
+        return {"error": f"Failed to download transcript: {e}", "transcript_index": transcript_index}
+
+    return {
+        "transcript_index": transcript_index,
+        "transcript_url": transcript_s3_url,
+        "content_length": len(transcript_text),
+        "transcript_content": transcript_text[:5000]
+    }
+
+
+@tool(name="analyze_transcript_content", description="Analyze transcript text for emotional state, story consistency, fraud risk, and credibility.")
+def analyze_transcript_content(transcript_text: str, transcript_index: int, claim_id: str) -> Dict[str, Any]:
+    """Use LLM to analyze transcript content."""
+    print(f"[Tool] analyze_transcript_content: transcript {transcript_index} for claim {claim_id}")
+
+    analysis_prompt = (
+        f"Analyze this insurance claim call transcript for claim {claim_id}.\n\n"
+        f"TRANSCRIPT:\n{transcript_text[:5000]}\n\n"
+        "Identify:\n"
+        "1. Emotional state (calm, distressed, angry, suspicious)\n"
+        "2. Story consistency (consistent, minor_inconsistencies, major_inconsistencies)\n"
+        "3. Fraud risk (none, potential, likely)\n"
+        "4. Information quality (complete, partial, vague)\n"
+        "5. Credibility (high, medium, low)\n\n"
+        "Return ONLY valid JSON:\n"
+        '{"tags":["tag1","tag2"],"emotional_state":"","story_consistency":"","fraud_risk":"","credibility":"","analysis_summary":""}'
+    )
+
+    try:
+        config = Config(read_timeout=300, connect_timeout=60, retries={'max_attempts': 3})
+        bedrock = boto3.client('bedrock-runtime', region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"), config=config)
+
+        resp = bedrock.invoke_model(
+            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 1000,
+                "temperature": 0.2,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": analysis_prompt}]}]
+            })
+        )
+
+        body = json.loads(resp['body'].read())
+        text = body['content'][0]['text']
+        clean = text.strip().removeprefix('```json').removesuffix('```').strip()
+        result = json.loads(clean)
+        result['transcript_index'] = transcript_index
+        print(f"[Tool] Transcript {transcript_index}: fraud_risk={result.get('fraud_risk')}, credibility={result.get('credibility')}")
+        return result
+
+    except Exception as e:
+        print(f"[Tool] Transcript analysis failed for {transcript_index}: {e}")
+        return {"error": str(e), "transcript_index": transcript_index, "tags": ["analysis_error"]}
+
+
+@tool(name="flag_evidence_gap", description="Flag a missing or insufficient piece of evidence.")
+def flag_evidence_gap(gap_description: str, severity: str) -> Dict[str, Any]:
+    """Record an evidence gap identified during analysis."""
+    print(f"[Tool] flag_evidence_gap: {gap_description} (severity={severity})")
+    return {"gap": gap_description, "severity": severity}
+
+
+# ---------- Analyzer ----------
 
 class EvidenceAnalyzer:
     def __init__(self):
-        # Ensure Bedrock region (override from env if you prefer)
         os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-        
         self._executor = ThreadPoolExecutor(max_workers=1)
-        
-        # Build a Bedrock model object for Strands
+
         self.model = BedrockModel(
             model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
             region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
             temperature=0.2,
         )
-        
+
         self.agent = Agent(
             name="Evidence Analyzer",
             model=self.model,
             system_prompt=(
-                "You are an expert insurance evidence analyzer. Analyze evidence and return JSON with:\n"
-                "- tags: array of 3-5 specific descriptive tags from this list:\n"
-                "  Images: severe, moderate, minor, high_damage, multiple_areas, front_impact, side_impact, rear_impact, vehicle_damage, property_damage, fraud_indicators, collision, weather, vandalism\n"
-                "  Videos: progressive_damage, timeline_accurate, scene_walkthrough, damage_consistent\n"
-                "  Audio: emotional_distress, inconsistent_story, caller_credible, caller_suspicious, fraud_indicators\n"
-                "- analysis_summary: brief summary\n"
-                "- severity/quality/risk: appropriate rating\n\n"
-                "ALWAYS return valid JSON. Use only tags from the specified lists above."
-            )
+                "You are an expert insurance evidence analyst.\n\n"
+                "WORKFLOW:\n"
+                "1. First call get_claim_evidence to fetch the evidence URLs from DynamoDB\n"
+                "2. Based on the modality requested, examine each piece of evidence using the appropriate tool\n"
+                "3. After examining all evidence, reason about patterns, gaps, and fraud indicators\n"
+                "4. If you notice missing evidence, call flag_evidence_gap\n\n"
+                "TOOLS:\n"
+                "- get_claim_evidence: fetch evidence URLs from DynamoDB\n"
+                "- examine_image: analyze an image via vision AI\n"
+                "- examine_video: analyze a video via Nova 2 Lite\n"
+                "- examine_transcript: download transcript content\n"
+                "- analyze_transcript_content: analyze transcript for fraud/credibility\n"
+                "- flag_evidence_gap: flag missing evidence\n\n"
+                "FINAL ANSWER FORMAT — you MUST return valid JSON with this structure:\n"
+                '{"tags": ["all_unique_tags_across_items"], "analysis_summary": "overall summary", '
+                '"damage_severity": "minor|moderate|severe|unknown", '
+                '"video_quality": "poor|good|excellent|unknown", '
+                '"fraud_risk": "low|medium|high|unknown", '
+                '"individual_results": [{"image_index|video_index|transcript_index": N, '
+                '"image_url|video_url|transcript_url": "s3://...", '
+                '"tags": ["this_items_specific_tags"], "damage_type": "...", "severity": "...", '
+                '"fraud_risk": "...", "credibility": "...", "analysis_summary": "..."}]}\n\n'
+                "CRITICAL: Each item in individual_results MUST have its own unique tags from its tool result. "
+                "Do NOT copy the same tags to every item."
+            ),
+            tools=[get_claim_evidence, examine_image, examine_video, examine_transcript, analyze_transcript_content, flag_evidence_gap],
         )
-        
-        self.s3 = boto3.client('s3')
-    
-    def _get_presigned_url(self, s3_url: str) -> str:
-        """Generate presigned URL for S3 object"""
-        try:
-            bucket, key = self._parse_s3_url(s3_url)
-            presigned_url = self.s3.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket, 'Key': key},
-                ExpiresIn=3600
-            )
-            return presigned_url
-        except Exception as e:
-            print(f"Error generating presigned URL for {s3_url}: {e}")
-            return None
-    
-    def _download_and_encode_image(self, s3_url: str) -> str:
-        """Download image from S3 and encode as base64"""
-        try:
-            presigned_url = self._get_presigned_url(s3_url)
-            if not presigned_url:
-                return None
-            
-            print(f"Downloading image from: {presigned_url}")
-            response = requests.get(presigned_url, timeout=30)
-            response.raise_for_status()
-            
-            # Encode image as base64
-            image_base64 = base64.b64encode(response.content).decode('utf-8')
-            print(f"Successfully downloaded and encoded image, size: {len(image_base64)} chars")
-            return image_base64
-            
-        except Exception as e:
-            print(f"Error downloading image from {s3_url}: {e}")
-            return None
-    
-    def _parse_s3_url(self, s3_url: str) -> tuple:
-        """Parse S3 URL to bucket and key"""
-        parts = s3_url.replace('s3://', '').split('/', 1)
-        return parts[0], parts[1]
-        """Parse S3 URL to bucket and key"""
-        parts = s3_url.replace('s3://', '').split('/', 1)
-        return parts[0], parts[1]
-    
-    def _call_agent_sync(self, prompt: str) -> str:
-        """Synchronous wrapper for agent call"""
-        result = self.agent(prompt)
-        
-        # Extract text from Strands Agent result structure
+
+    def _call_agent_sync(self, prompt: str):
+        return self.agent(prompt)
+
+    def _extract_text(self, result) -> str:
         if hasattr(result, 'message') and result.message:
             content = result.message.get('content', [])
-            if content and len(content) > 0:
-                return content[0].get('text', '')
-        
-        # Fallback to string conversion
+            for block in content:
+                if 'text' in block:
+                    return block['text']
         return str(result)
-    
-    async def analyze_images(self, claim_id: str, image_urls: list) -> dict:
-        """Analyze claim images individually and return comprehensive tags and analysis"""
-        
-        print(f"\n=== STARTING IMAGE ANALYSIS FOR CLAIM {claim_id} ===")
-        print(f"Total images to analyze: {len(image_urls)}")
-        
-        if not image_urls:
-            print("No images to analyze")
-            return {
-                'tags': [],
-                'analysis': {'analysis_summary': 'No images to analyze'},
-                'damage_severity': 'unknown'
-            }
-        
-        all_tags = []
-        individual_analyses = []
-        
-        try:
-            # Analyze each image individually
-            for i, image_url in enumerate(image_urls):
-                print(f"\n--- Analyzing Image {i+1}/{len(image_urls)} ---")
-                print(f"Image URL: {image_url}")
-                
-                # Download and encode the image
-                image_base64 = self._download_and_encode_image(image_url)
-                if not image_base64:
-                    print(f"Failed to download image {i+1}, skipping...")
-                    individual_analyses.append({
-                        'image_index': i+1,
-                        'image_url': image_url,
-                        'analysis': {'error': 'Failed to download image'}
-                    })
-                    continue
-                
-                # Create vision analysis prompt with image
-                analysis_prompt = f"""
-                You are analyzing an insurance claim image for claim {claim_id}.
-                
-                This is image {i+1} of {len(image_urls)} total images.
-                
-                Please examine this image carefully and identify:
-                1. Primary damage type (collision, weather, vandalism, fire, water, etc.)
-                2. Damage severity (minor, moderate, severe)
-                3. Affected vehicle/property areas (front, rear, side, roof, interior, etc.)
-                4. Specific damage characteristics (scratches, dents, cracks, breaks, etc.)
-                5. Any fraud indicators or inconsistencies
-                
-                Return ONLY valid JSON with these exact fields:
-                {{
-                    "tags": ["damage_type", "severity_level", "affected_area", "damage_characteristic"],
-                    "damage_type": "specific damage type found",
-                    "severity": "minor/moderate/severe", 
-                    "affected_area": "specific area damaged",
-                    "damage_characteristic": "specific characteristic observed",
-                    "analysis_summary": "Brief description of what you see in this image"
-                }}
-                
-                Use specific tags from these lists:
-                Damage types: collision, weather_damage, vandalism, fire_damage, water_damage, theft_damage
-                Severity: minor, moderate, severe
-                Areas: front_end, rear_end, driver_side, passenger_side, roof, interior, windshield, bumper
-                Characteristics: scratches, dents, cracks, breaks, burns, water_stains, missing_parts
-                """
-                
-                # Use Bedrock directly for vision analysis
-                try:
-                    import boto3
-                    from botocore.config import Config
-                    
-                    # Configure bedrock client with extended timeouts
-                    config = Config(
-                        read_timeout=300,  # 5 minutes
-                        connect_timeout=60,
-                        retries={'max_attempts': 3}
-                    )
-                    bedrock = boto3.client('bedrock-runtime', 
-                                         region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-                                         config=config)
-                    
-                    # Prepare the message for Claude with image
-                    message = {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": analysis_prompt
-                            },
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": image_base64
-                                }
-                            }
-                        ]
-                    }
-                    
-                    # Call Claude Sonnet 4 with vision
-                    response = bedrock.invoke_model(
-                        modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
-                        body=json.dumps({
-                            "anthropic_version": "bedrock-2023-05-31",
-                            "max_tokens": 1000,
-                            "temperature": 0.2,
-                            "messages": [message]
-                        })
-                    )
-                    
-                    response_body = json.loads(response['body'].read())
-                    response_text = response_body['content'][0]['text']
-                    
-                    print(f"Raw AI vision response for image {i+1}: {response_text}")
-                    
-                except Exception as vision_error:
-                    print(f"Vision analysis failed for image {i+1}, falling back to Strands: {vision_error}")
-                    # Fallback to text-only analysis
-                    loop = asyncio.get_running_loop()
-                    response_text = await loop.run_in_executor(self._executor, self._call_agent_sync, analysis_prompt)
-                
-                print(f"Raw AI response for image {i+1}: {response_text}")
-                
-                # Parse JSON response
-                try:
-                    # Remove markdown code blocks if present
-                    clean_response = response_text.strip()
-                    if clean_response.startswith('```json'):
-                        clean_response = clean_response[7:]  # Remove ```json
-                    if clean_response.endswith('```'):
-                        clean_response = clean_response[:-3]  # Remove ```
-                    clean_response = clean_response.strip()
-                    
-                    image_analysis = json.loads(clean_response)
-                    print(f"Parsed analysis for image {i+1}: {image_analysis}")
-                    
-                    # Collect tags from this image
-                    image_tags = image_analysis.get('tags', [])
-                    all_tags.extend(image_tags)
-                    
-                    individual_analyses.append({
-                        'image_index': i+1,
-                        'image_url': image_url,
-                        'analysis': image_analysis
-                    })
-                    
-                    print(f"Tags from image {i+1}: {image_tags}")
-                    
-                except json.JSONDecodeError as e:
-                    print(f"JSON parsing failed for image {i+1}: {e}")
-                    print(f"Raw response was: {response_text}")
-                    # Add fallback tags for this image
-                    fallback_tags = ['image_processed', 'analysis_error']
-                    all_tags.extend(fallback_tags)
-                    individual_analyses.append({
-                        'image_index': i+1,
-                        'image_url': image_url,
-                        'analysis': {'error': 'Failed to parse AI response', 'raw_response': response_text}
-                    })
-            
-            # Remove duplicates and create final tag list
-            unique_tags = list(set(all_tags))
-            print(f"\n=== FINAL ANALYSIS RESULTS ===")
-            print(f"All collected tags: {all_tags}")
-            print(f"Unique tags: {unique_tags}")
-            print(f"Individual analyses count: {len(individual_analyses)}")
-            
-            # Create comprehensive summary
-            summary = f"Analyzed {len(image_urls)} images. "
-            if individual_analyses:
-                damage_types = [analysis['analysis'].get('damage_type', 'unknown') for analysis in individual_analyses if 'analysis' in analysis and isinstance(analysis['analysis'], dict)]
-                severities = [analysis['analysis'].get('severity', 'unknown') for analysis in individual_analyses if 'analysis' in analysis and isinstance(analysis['analysis'], dict)]
-                
-                if damage_types:
-                    summary += f"Damage types found: {', '.join(set(damage_types))}. "
-                if severities:
-                    summary += f"Severity levels: {', '.join(set(severities))}."
-            
-            return {
-                'tags': unique_tags,
-                'analysis': {
-                    'analysis_summary': summary,
-                    'total_images': len(image_urls)
-                },
-                'individual_analyses': individual_analyses,
-                'damage_severity': 'moderate'  # Could be determined from individual analyses
-            }
-            
-        except Exception as e:
-            print(f"ERROR analyzing images for {claim_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                'tags': ['analysis_error'],
-                'analysis': {'analysis_summary': f'Error analyzing images: {str(e)}'},
-                'damage_severity': 'unknown'
-            }
-    
-    def _download_video(self, s3_url: str) -> bytes:
-        """Download video from S3 and return bytes"""
-        try:
-            presigned_url = self._get_presigned_url(s3_url)
-            if not presigned_url:
-                return None
-            
-            print(f"Downloading video from: {presigned_url}")
-            response = requests.get(presigned_url, timeout=120)  # Longer timeout for videos
-            response.raise_for_status()
-            
-            print(f"Successfully downloaded video, size: {len(response.content)} bytes")
-            return response.content
-            
-        except Exception as e:
-            print(f"Error downloading video from {s3_url}: {e}")
-            return None
-    async def analyze_videos(self, claim_id: str, video_urls: list) -> dict:
-        """Analyze claim videos using Nova 2 Lite with actual video content"""
-        
-        print(f"\n=== STARTING VIDEO ANALYSIS WITH NOVA 2 LITE FOR CLAIM {claim_id} ===")
-        print(f"Total videos to analyze: {len(video_urls)}")
-        
-        if not video_urls:
-            print("No videos to analyze")
-            return {
-                'tags': [],
-                'analysis': {'analysis_summary': 'No videos to analyze'},
-                'video_quality': 'unknown'
-            }
-        
-        all_tags = []
-        individual_analyses = []
-        
-        try:
-            # Analyze each video individually
-            for i, video_url in enumerate(video_urls):
-                print(f"\n--- Analyzing Video {i+1}/{len(video_urls)} ---")
-                print(f"Video URL: {video_url}")
-                
-                # Download actual video content
-                video_bytes = self._download_video(video_url)
-                if not video_bytes:
-                    print(f"Failed to download video {i+1}, skipping...")
-                    individual_analyses.append({
-                        'video_index': i+1,
-                        'video_url': video_url,
-                        'analysis': {'error': 'Failed to download video'}
-                    })
-                    continue
-                
-                # Use Nova 2 Lite for video analysis
-                try:
-                    from botocore.config import Config
-                    
-                    # Configure bedrock client with extended timeouts for video processing
-                    config = Config(
-                        read_timeout=600,  # 10 minutes for video analysis
-                        connect_timeout=60,
-                        retries={'max_attempts': 3}
-                    )
-                    bedrock = boto3.client('bedrock-runtime', region_name="us-east-1", config=config)
-                    
-                    user_prompt = f"""You are Nova 2 Lite analyzing an MP4 insurance claim video for claim {claim_id}.
 
-This is video {i+1} of {len(video_urls)}.
+    def _parse_final_json(self, text: str) -> dict:
+        clean = text.strip()
+        if '```json' in clean:
+            parts = clean.split('```json')
+            last_block = parts[-1].split('```')[0].strip()
+            try:
+                return json.loads(last_block)
+            except json.JSONDecodeError:
+                pass
 
-Analyze the video and identify:
-1. Primary damage type (collision, weather, fire, vandalism, water)
-2. Damage severity (minor damage, moderate damage, severe damage)
-3. Video quality (poor quality, good quality, excellent quality)
-4. Consistency with typical claim scenarios (consistent with scenario, questionable for scenario, suspicious scenario)
-5. Temporal analysis of damage progression (max 15 words)
-6. Analysis summary (max 30 words)
-
-Return ONLY valid JSON:
-{{
-    "damage_type": "",
-    "severity": "",
-    "video_quality": "",
-    "consistency": "",
-    "temporal_analysis": "",
-    "analysis_summary": ""
-}}"""
-                    
-                    response = bedrock.converse(
-                        modelId="global.amazon.nova-2-lite-v1:0",
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"text": user_prompt},
-                                    {
-                                        "video": {
-                                            "format": "mp4",
-                                            "source": {
-                                                "bytes": video_bytes
-                                            }
-                                        }
-                                    }
-                                ]
-                            }
-                        ],
-                        additionalModelRequestFields={
-                            "reasoningConfig": {
-                                "type": "enabled",
-                                "maxReasoningEffort": "medium"
-                            }
-                        }
-                    )
-                    
-                    # Parse Nova 2 Lite response - handle reasoning content
-                    content_list = response["output"]["message"]["content"]
-                    analysis_text = None
-                    
-                    for content in content_list:
-                        if "text" in content:
-                            analysis_text = content["text"]
+        # Find largest JSON object
+        best = {}
+        i = 0
+        while i < len(clean):
+            if clean[i] == '{':
+                depth = 0
+                for j in range(i, len(clean)):
+                    if clean[j] == '{':
+                        depth += 1
+                    elif clean[j] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                candidate = json.loads(clean[i:j+1])
+                                if len(clean[i:j+1]) > len(json.dumps(best)):
+                                    best = candidate
+                            except json.JSONDecodeError:
+                                pass
                             break
-                    
-                    if not analysis_text:
-                        raise ValueError("Nova response did not contain text")
-                        
-                    print(f"Raw Nova 2 Lite response for video {i+1}: {analysis_text}")
-                    
-                except Exception as nova_error:
-                    print(f"Nova 2 Lite analysis failed for video {i+1}: {nova_error}")
-                    # Fallback to text-only analysis
-                    analysis_text = '{"tags": ["video_processed", "analysis_error"], "analysis_summary": "Video analysis failed"}'
-                
-                # Parse JSON response
-                try:
-                    # Remove markdown code blocks if present
-                    clean_analysis = analysis_text.strip()
-                    if clean_analysis.startswith('```json'):
-                        clean_analysis = clean_analysis[7:]  # Remove ```json
-                    if clean_analysis.endswith('```'):
-                        clean_analysis = clean_analysis[:-3]  # Remove ```
-                    clean_analysis = clean_analysis.strip()
-                    
-                    video_analysis = json.loads(clean_analysis)
-                    print(f"Parsed analysis for video {i+1}: {video_analysis}")
-                    
-                    # Collect tags from video analysis - just extract the main values
-                    video_tags = []
-                    
-                    # Extract the main field values as tags
-                    damage_type = video_analysis.get('damage_type', '')
-                    severity = video_analysis.get('severity', '')
-                    video_quality = video_analysis.get('video_quality', '')
-                    consistency = video_analysis.get('consistency', '')
-                    
-                    # Add the actual values as tags (clean format)
-                    if damage_type:
-                        video_tags.append(damage_type.lower().replace(' ', '_'))
-                    if severity:
-                        video_tags.append(severity.lower().replace(' ', '_'))
-                    if video_quality:
-                        video_tags.append(video_quality.lower().replace(' ', '_'))
-                    if consistency:
-                        video_tags.append(consistency.lower().replace(' ', '_'))
-                    
-                    all_tags.extend(video_tags)
-                    
-                    # Add tags to the analysis
-                    video_analysis['tags'] = video_tags
-                    
-                    individual_analyses.append({
-                        'video_index': i+1,
-                        'video_url': video_url,
-                        'video_size_bytes': len(video_bytes),
-                        'analysis': video_analysis
-                    })
-                    
-                    print(f"Tags from video {i+1}: {video_tags}")
-                    
-                except json.JSONDecodeError as e:
-                    print(f"JSON parsing failed for video {i+1}: {e}")
-                    print(f"Raw response was: {analysis_text}")
-                    # Add fallback tags for this video
-                    fallback_tags = ['video_processed', 'analysis_error']
-                    all_tags.extend(fallback_tags)
-                    individual_analyses.append({
-                        'video_index': i+1,
-                        'video_url': video_url,
-                        'analysis': {'error': 'Failed to parse AI response', 'raw_response': analysis_text}
-                    })
-                
-                # Clean up memory
-                del video_bytes
-            
-            # Remove duplicates and create final tag list
-            unique_tags = list(set(all_tags))
-            print(f"\n=== FINAL VIDEO ANALYSIS RESULTS ===")
-            print(f"All collected tags: {all_tags}")
-            print(f"Unique tags: {unique_tags}")
-            print(f"Individual analyses count: {len(individual_analyses)}")
-            
-            # Create comprehensive summary
-            summary = f"Analyzed {len(video_urls)} videos using Nova 2 Lite. "
-            if individual_analyses:
-                damage_types = [analysis['analysis'].get('damage_type', 'unknown') for analysis in individual_analyses if 'analysis' in analysis and isinstance(analysis['analysis'], dict)]
-                severities = [analysis['analysis'].get('severity', 'unknown') for analysis in individual_analyses if 'analysis' in analysis and isinstance(analysis['analysis'], dict)]
-                
-                if damage_types:
-                    summary += f"Damage types found: {', '.join(set(damage_types))}. "
-                if severities:
-                    summary += f"Severity levels: {', '.join(set(severities))}."
-            
-            return {
-                'tags': unique_tags,
-                'analysis': {
-                    'analysis_summary': summary,
-                    'total_videos': len(video_urls)
-                },
-                'individual_analyses': individual_analyses,
-                'video_quality': 'good'  # Could be determined from individual analyses
-            }
-            
-        except Exception as e:
-            print(f"ERROR analyzing videos for {claim_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                'tags': ['analysis_error'],
-                'analysis': {'analysis_summary': f'Error analyzing videos: {str(e)}'},
-                'video_quality': 'unknown'
-            }
-    
-    def _download_transcript(self, s3_url: str) -> str:
-        """Download transcript text from S3"""
-        try:
-            presigned_url = self._get_presigned_url(s3_url)
-            if not presigned_url:
-                return None
-            
-            print(f"Downloading transcript from: {presigned_url}")
-            response = requests.get(presigned_url, timeout=30)
-            response.raise_for_status()
-            
-            # Get text content
-            transcript_text = response.text
-            print(f"Successfully downloaded transcript, length: {len(transcript_text)} chars")
-            return transcript_text
-            
-        except Exception as e:
-            print(f"Error downloading transcript from {s3_url}: {e}")
-            return None
+            i += 1
+        return best
 
-    async def analyze_audio_transcripts(self, claim_id: str, transcript_urls: list, audio_urls: list) -> dict:
-        """Analyze call transcripts and audio by downloading actual transcript content"""
+    async def analyze(self, claim_id: str, modality: str) -> dict:
+        """
+        Single entry point. The agent fetches evidence from DynamoDB and decides what to analyze.
         
-        print(f"\n=== STARTING AUDIO/TRANSCRIPT ANALYSIS FOR CLAIM {claim_id} ===")
-        print(f"Transcript files: {len(transcript_urls)}")
-        print(f"Audio files: {len(audio_urls)}")
-        
-        if not transcript_urls and not audio_urls:
-            print("No audio or transcripts to analyze")
-            return {
-                'tags': [],
-                'analysis': {'analysis_summary': 'No audio or transcripts to analyze'},
-                'fraud_risk': 'unknown'
-            }
-        
-        all_tags = []
-        individual_analyses = []
-        
+        Args:
+            claim_id: The claim to analyze
+            modality: "images", "videos", or "audio" — which button was clicked
+            
+        Returns:
+            Dict with 'tags', 'analysis', 'individual_analyses' matching UI contract.
+        """
+        print(f"\n=== EVIDENCE AGENT: {modality.upper()} ANALYSIS FOR CLAIM {claim_id} ===")
+
+        prompt = (
+            f"Analyze the {modality.upper()} evidence for insurance claim {claim_id}.\n\n"
+            f"Steps:\n"
+            f"1. Call get_claim_evidence with claim_id=\"{claim_id}\" to fetch available evidence URLs\n"
+            f"2. From the result, look at the '{modality}' "
+        )
+
+        if modality == "audio":
+            prompt += (
+                "and 'transcripts' URLs\n"
+                "3. For each transcript: call examine_transcript, then analyze_transcript_content with the text\n"
+            )
+        elif modality == "images":
+            prompt += (
+                "URLs\n"
+                "3. For each image: call examine_image\n"
+            )
+        elif modality == "videos":
+            prompt += (
+                "URLs\n"
+                "3. For each video: call examine_video\n"
+            )
+
+        prompt += (
+            "4. After examining all items, flag any evidence gaps\n"
+            "5. Provide your FINAL ANSWER JSON with individual_results containing per-item tags\n\n"
+            f"Use claim_id=\"{claim_id}\" in all tool calls."
+        )
+
         try:
-            # Analyze each transcript individually
-            for i, transcript_url in enumerate(transcript_urls):
-                print(f"\n--- Analyzing Transcript {i+1}/{len(transcript_urls)} ---")
-                print(f"Transcript URL: {transcript_url}")
-                
-                # Download actual transcript content
-                transcript_text = self._download_transcript(transcript_url)
-                if not transcript_text:
-                    print(f"Failed to download transcript {i+1}, skipping...")
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(self._executor, self._call_agent_sync, prompt)
+            response_text = self._extract_text(result)
+            print(f"Agent response length: {len(response_text)} chars")
+
+            final = self._parse_final_json(response_text)
+            tags = final.get('tags', [])
+            summary = final.get('analysis_summary', f'Analyzed {modality}')
+
+            # Build individual_analyses in the format UI expects
+            individual_analyses = []
+            for item in final.get('individual_results', []):
+                if modality == "images":
                     individual_analyses.append({
-                        'transcript_index': i+1,
-                        'transcript_url': transcript_url,
-                        'analysis': {'error': 'Failed to download transcript'}
+                        'image_index': item.get('image_index', 0),
+                        'image_url': item.get('image_url', ''),
+                        'analysis': {
+                            'tags': item.get('tags', []),
+                            'damage_type': item.get('damage_type', ''),
+                            'severity': item.get('severity', ''),
+                            'analysis_summary': item.get('analysis_summary', '')
+                        }
                     })
-                    continue
-                
-                print(f"Transcript content preview: {transcript_text[:200]}...")
-                
-                analysis_prompt = f"""
-                Analyze this insurance claim call transcript for claim {claim_id}.
-                
-                This is transcript {i+1} of {len(transcript_urls)} total transcripts.
-                
-                TRANSCRIPT CONTENT:
-                {transcript_text}
-                
-                Analyze the conversation and identify:
-                1. Caller emotional state (calm, distressed, angry, suspicious)
-                2. Story consistency (consistent, minor_inconsistencies, major_inconsistencies)
-                3. Fraud indicators (none, potential, likely)
-                4. Information completeness (complete, partial, vague)
-                5. Caller credibility (high, medium, low)
-                
-                Return ONLY valid JSON with these exact fields:
-                {{
-                    "tags": ["emotional_state", "story_consistency", "fraud_risk", "information_quality"],
-                    "emotional_state": "calm/distressed/angry/suspicious",
-                    "story_consistency": "consistent/minor_inconsistencies/major_inconsistencies",
-                    "fraud_risk": "none/potential/likely",
-                    "information_quality": "complete/partial/vague",
-                    "credibility": "high/medium/low",
-                    "analysis_summary": "Brief summary of key findings from this transcript"
-                }}
-                
-                Use specific tags from these lists:
-                Emotional: calm, distressed, angry, suspicious, cooperative, uncooperative
-                Consistency: story_consistent, minor_inconsistencies, major_inconsistencies, contradictory
-                Fraud: no_fraud_indicators, potential_fraud, likely_fraud, fraud_red_flags
-                Quality: complete_information, partial_information, vague_details, missing_details
-                """
-                
-                # Use Strands agent to analyze transcript content
-                loop = asyncio.get_running_loop()
-                response_text = await loop.run_in_executor(self._executor, self._call_agent_sync, analysis_prompt)
-                
-                print(f"Raw AI response for transcript {i+1}: {response_text}")
-                
-                # Parse JSON response
-                try:
-                    # Remove markdown code blocks if present
-                    clean_response = response_text.strip()
-                    if clean_response.startswith('```json'):
-                        clean_response = clean_response[7:]  # Remove ```json
-                    if clean_response.endswith('```'):
-                        clean_response = clean_response[:-3]  # Remove ```
-                    clean_response = clean_response.strip()
-                    
-                    transcript_analysis = json.loads(clean_response)
-                    print(f"Parsed analysis for transcript {i+1}: {transcript_analysis}")
-                    
-                    # Collect tags from this transcript
-                    transcript_tags = transcript_analysis.get('tags', [])
-                    all_tags.extend(transcript_tags)
-                    
+                elif modality == "videos":
                     individual_analyses.append({
-                        'transcript_index': i+1,
-                        'transcript_url': transcript_url,
-                        'content_length': len(transcript_text),
-                        'analysis': transcript_analysis
+                        'video_index': item.get('video_index', 0),
+                        'video_url': item.get('video_url', ''),
+                        'analysis': {
+                            'tags': item.get('tags', []),
+                            'damage_type': item.get('damage_type', ''),
+                            'severity': item.get('severity', ''),
+                            'analysis_summary': item.get('analysis_summary', '')
+                        }
                     })
-                    
-                    print(f"Tags from transcript {i+1}: {transcript_tags}")
-                    
-                except json.JSONDecodeError as e:
-                    print(f"JSON parsing failed for transcript {i+1}: {e}")
-                    print(f"Raw response was: {response_text}")
-                    # Add fallback tags for this transcript
-                    fallback_tags = ['transcript_processed', 'analysis_error']
-                    all_tags.extend(fallback_tags)
+                elif modality == "audio":
                     individual_analyses.append({
-                        'transcript_index': i+1,
-                        'transcript_url': transcript_url,
-                        'analysis': {'error': 'Failed to parse AI response', 'raw_response': response_text}
+                        'transcript_index': item.get('transcript_index', 0),
+                        'transcript_url': item.get('transcript_url', ''),
+                        'analysis': {
+                            'tags': item.get('tags', []),
+                            'fraud_risk': item.get('fraud_risk', ''),
+                            'credibility': item.get('credibility', ''),
+                            'analysis_summary': item.get('analysis_summary', '')
+                        }
                     })
-            
-            # Remove duplicates and create final tag list
-            unique_tags = list(set(all_tags))
-            print(f"\n=== FINAL TRANSCRIPT ANALYSIS RESULTS ===")
-            print(f"All collected tags: {all_tags}")
-            print(f"Unique tags: {unique_tags}")
-            print(f"Individual analyses count: {len(individual_analyses)}")
-            
-            # Create comprehensive summary
-            summary = f"Analyzed {len(transcript_urls)} transcripts. "
-            if individual_analyses:
-                fraud_risks = [analysis['analysis'].get('fraud_risk', 'unknown') for analysis in individual_analyses if 'analysis' in analysis and isinstance(analysis['analysis'], dict)]
-                emotional_states = [analysis['analysis'].get('emotional_state', 'unknown') for analysis in individual_analyses if 'analysis' in analysis and isinstance(analysis['analysis'], dict)]
-                
-                if fraud_risks:
-                    summary += f"Fraud risk levels: {', '.join(set(fraud_risks))}. "
-                if emotional_states:
-                    summary += f"Caller states: {', '.join(set(emotional_states))}."
-            
+
+            # Fallback if agent didn't produce individual_results
+            if not individual_analyses:
+                individual_analyses.append({
+                    'image_index' if modality == 'images' else 'video_index' if modality == 'videos' else 'transcript_index': 1,
+                    'analysis': {'tags': tags}
+                })
+
             return {
-                'tags': unique_tags,
-                'analysis': {
-                    'analysis_summary': summary,
-                    'total_transcripts': len(transcript_urls),
-                    'total_audio_files': len(audio_urls)
-                },
+                'tags': tags,
+                'analysis': {'analysis_summary': summary},
                 'individual_analyses': individual_analyses,
-                'fraud_risk': 'low'  # Could be determined from individual analyses
+                'damage_severity': final.get('damage_severity', 'unknown'),
+                'video_quality': final.get('video_quality', 'unknown'),
+                'fraud_risk': final.get('fraud_risk', 'unknown'),
             }
-            
+
         except Exception as e:
-            print(f"ERROR analyzing transcripts for {claim_id}: {e}")
+            print(f"ERROR in evidence agent ({modality}) for {claim_id}: {e}")
             import traceback
             traceback.print_exc()
             return {
                 'tags': ['analysis_error'],
-                'analysis': {'analysis_summary': f'Error analyzing transcripts: {str(e)}'},
-                'fraud_risk': 'unknown'
+                'analysis': {'analysis_summary': f'Error: {e}'},
+                'individual_analyses': [],
+                'damage_severity': 'unknown',
+                'video_quality': 'unknown',
+                'fraud_risk': 'unknown',
             }
+
+
+# ---------- S3 tagging ----------
 
 async def tag_s3_objects_individual(individual_analyses: list, url_key: str):
-    """Tag each S3 object with its individual analysis results"""
+    """Tag each S3 object with its individual analysis results."""
     s3 = boto3.client('s3')
-    
+
     for analysis in individual_analyses:
         try:
-            file_url = analysis[url_key]  # 'image_url', 'video_url', etc.
-            file_tags = analysis['analysis'].get('tags', [])
+            file_url = analysis[url_key]
+            file_tags = analysis.get('analysis', {}).get('tags', [])
             file_index = analysis.get('image_index', analysis.get('video_index', analysis.get('transcript_index', 1)))
-            
-            # Parse S3 URL
-            parts = file_url.replace('s3://', '').split('/', 1)
-            bucket, key = parts[0], parts[1]
-            
-            # Create tag set with file-specific prefix
+
+            bucket, key = _parse_s3_url(file_url)
+
             tag_set = [
                 {'Key': 'analysis_status', 'Value': 'completed'},
                 {'Key': 'file_index', 'Value': str(file_index)}
             ]
-            
-            # Add individual file tags (S3 limit of 10 tags total)
-            for i, tag in enumerate(file_tags[:8]):  # Leave room for status and index
-                tag_set.append({'Key': f'file_{file_index}_tag_{i}', 'Value': tag})
-            
-            s3.put_object_tagging(
-                Bucket=bucket,
-                Key=key,
-                Tagging={'TagSet': tag_set}
-            )
-            
+            for i, tag in enumerate(file_tags[:8]):
+                tag_set.append({'Key': f'tag_{i}', 'Value': tag})
+
+            s3.put_object_tagging(Bucket=bucket, Key=key, Tagging={'TagSet': tag_set})
         except Exception as e:
             print(f"Error tagging S3 object {analysis.get(url_key, 'unknown')}: {e}")
