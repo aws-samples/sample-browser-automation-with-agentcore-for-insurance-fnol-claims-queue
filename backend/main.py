@@ -161,11 +161,8 @@ async def analyze_images(claim_id: str):
 async def process_images_async(claim_id: str):
     """Background processing for image analysis"""
     try:
-        claim = get_claim_from_db(claim_id)
-        image_urls = claim.get('evidence_urls', {}).get('images', [])
-        
-        # Analyze images
-        analysis_result = await evidence_analyzer.analyze_images(claim_id, image_urls)
+        # Agent fetches evidence from DynamoDB itself
+        analysis_result = await evidence_analyzer.analyze(claim_id, "images")
         
         # Update with results
         table = init_dynamodb()
@@ -184,7 +181,7 @@ async def process_images_async(claim_id: str):
         )
         
         # Tag S3 objects
-        if image_urls and 'individual_analyses' in analysis_result:
+        if analysis_result['individual_analyses']:
             await tag_s3_objects_individual(analysis_result['individual_analyses'], 'image_url')
             
     except Exception as e:
@@ -238,11 +235,8 @@ async def analyze_videos(claim_id: str):
 async def process_videos_async(claim_id: str):
     """Background processing for video analysis"""
     try:
-        claim = get_claim_from_db(claim_id)
-        video_urls = claim.get('evidence_urls', {}).get('videos', [])
-        
-        # Analyze videos
-        analysis_result = await evidence_analyzer.analyze_videos(claim_id, video_urls)
+        # Agent fetches evidence from DynamoDB itself
+        analysis_result = await evidence_analyzer.analyze(claim_id, "videos")
         
         # Update with results
         table = init_dynamodb()
@@ -261,7 +255,7 @@ async def process_videos_async(claim_id: str):
         )
         
         # Tag S3 objects
-        if video_urls and 'individual_analyses' in analysis_result:
+        if analysis_result['individual_analyses']:
             await tag_s3_objects_individual(analysis_result['individual_analyses'], 'video_url')
             
     except Exception as e:
@@ -315,12 +309,8 @@ async def analyze_audio(claim_id: str):
 async def process_audio_async(claim_id: str):
     """Background processing for audio analysis"""
     try:
-        claim = get_claim_from_db(claim_id)
-        audio_urls = claim.get('evidence_urls', {}).get('audio', [])
-        transcript_urls = claim.get('evidence_urls', {}).get('transcripts', [])
-        
-        # Analyze audio/transcripts
-        analysis_result = await evidence_analyzer.analyze_audio_transcripts(claim_id, transcript_urls, audio_urls)
+        # Agent fetches evidence from DynamoDB itself
+        analysis_result = await evidence_analyzer.analyze(claim_id, "audio")
         
         # Update with results
         table = init_dynamodb()
@@ -339,7 +329,7 @@ async def process_audio_async(claim_id: str):
         )
         
         # Tag S3 objects
-        if (audio_urls or transcript_urls) and 'individual_analyses' in analysis_result:
+        if analysis_result['individual_analyses']:
             await tag_s3_objects_individual(analysis_result['individual_analyses'], 'transcript_url')
             
     except Exception as e:
