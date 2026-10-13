@@ -194,6 +194,19 @@ cat full_automation/screenshots/<session-id>/execution.log
 - **Strands Agents**: [strandsagents.com](https://strandsagents.com/latest/)
 - **AgentCore Browser Documentation**: [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/browser-tool.html)
 
+## Disclaimer
+This repository is sample code published as a companion to the AWS blog post, Hands-free first notice of loss: Using Strands Agents and Amazon Bedrock AgentCore Browser Tool for intelligent claims intake (https://aws.amazon.com/blogs/machine-learning/hands-free-first-notice-of-loss-using-strands-agents-and-amazon-bedrock-agentcore-browser-tool-for-intelligent-claims-intake/). Its purpose is to demonstrate AgentCore browser automation and Strands domain reasoning for FNOL intake. It is intended for learning and experimentation, and is not production software, so please do not deploy it with real claimant data or expose it to an untrusted network.
+
+A few things to be aware of, all by design for a demonstration:
+
+- The backend does not include authentication or authorization.
+
+- The sample deploys an internet-facing endpoint and seeds data into S3 and DynamoDB.
+
+- It ships with dummy data only and has no capability to ingest or read real production claims data as written.
+
+If you would like to build on this sample for anything beyond a demo, we would recommend adding authentication and authorization, scoping IAM roles to least privilege, and restricting network exposure before using it with any real data.
+
 ## License
 
 This sample code is made available under the MIT-0 license. See the LICENSE file.
